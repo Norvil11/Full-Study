@@ -1,0 +1,103 @@
+export const MOCK_USERS = [
+  { id: 'u1', email: 'donan.chavez@utec.edu.pe',   full_name: 'Donan Chavez',    avatar_url: null },
+  { id: 'u2', email: 'ana.torres@utec.edu.pe',      full_name: 'Ana Torres',      avatar_url: null },
+  { id: 'u3', email: 'carlos.rios@utec.edu.pe',     full_name: 'Carlos Rios',     avatar_url: null },
+  { id: 'u4', email: 'lucia.mendez@utec.edu.pe',    full_name: 'Lucía Méndez',    avatar_url: null },
+  { id: 'u5', email: 'jorge.palma@utec.edu.pe',     full_name: 'Jorge Palma',     avatar_url: null },
+]
+
+export const MOCK_TASKS = [
+  {
+    id: 't1',
+    title: 'Diseñar sistema de autenticación',
+    description: 'Implementar flujo completo de login y registro con Supabase Auth.',
+    status: 'todo',
+    priority: 'high',
+    assignee_id: 'u1',
+    due_date: '2025-06-02',
+    tags: ['Backend', 'Auth'],
+  },
+  {
+    id: 't2',
+    title: 'Integrar módulo de reportes',
+    description: 'Crear dashboards con gráficas de productividad por área.',
+    status: 'todo',
+    priority: 'medium',
+    assignee_id: 'u2',
+    due_date: '2025-06-10',
+    tags: ['Analytics'],
+  },
+  {
+    id: 't3',
+    title: 'Refactor KanbanBoard component',
+    description: 'Mejorar la lógica de drag & drop y reducir re-renders innecesarios.',
+    status: 'in_progress',
+    priority: 'high',
+    assignee_id: 'u3',
+    due_date: '2025-05-30',
+    tags: ['Frontend', 'Perf'],
+  },
+  {
+    id: 't4',
+    title: 'Configurar CI/CD pipeline',
+    description: 'GitHub Actions para build, test y deploy automático en Vercel.',
+    status: 'in_progress',
+    priority: 'medium',
+    assignee_id: 'u1',
+    due_date: '2025-05-28',
+    tags: ['DevOps'],
+  },
+  {
+    id: 't5',
+    title: 'Documentar API endpoints',
+    description: 'Swagger/OpenAPI para todos los endpoints REST de la plataforma.',
+    status: 'review',
+    priority: 'low',
+    assignee_id: 'u4',
+    due_date: '2025-05-27',
+    tags: ['Docs'],
+  },
+  {
+    id: 't6',
+    title: 'Pruebas de carga con k6',
+    description: 'Simular 500 usuarios concurrentes y registrar métricas de latencia.',
+    status: 'review',
+    priority: 'high',
+    assignee_id: 'u5',
+    due_date: '2025-05-26',
+    tags: ['QA', 'Perf'],
+  },
+  {
+    id: 't7',
+    title: 'Migración base de datos v1 → v2',
+    description: 'Ejecutar scripts de migración y validar integridad de datos.',
+    status: 'done',
+    priority: 'high',
+    assignee_id: 'u2',
+    due_date: '2025-05-20',
+    tags: ['DB'],
+  },
+  {
+    id: 't8',
+    title: 'Onboarding UX — primera sesión',
+    description: 'Tour guiado para nuevos usuarios con tooltips y pasos interactivos.',
+    status: 'done',
+    priority: 'medium',
+    assignee_id: 'u3',
+    due_date: '2025-05-18',
+    tags: ['UX'],
+  },
+]
+
+export const COLUMNS = [
+  { id: 'todo',        label: 'Por Hacer',   color: 'text-slate-400',  dot: 'bg-slate-400' },
+  { id: 'in_progress', label: 'En Progreso', color: 'text-blue-400',   dot: 'bg-blue-400' },
+  { id: 'review',      label: 'Revisión',    color: 'text-amber-400',  dot: 'bg-amber-400' },
+  { id: 'done',        label: 'Completado',  color: 'text-emerald-400',dot: 'bg-emerald-400' },
+]
+
+export const PRIORITY_CONFIG = {
+  high:   { label: 'Alta',   class: 'text-rose-400   bg-rose-400/10   border-rose-400/20' },
+  medium: { label: 'Media',  class: 'text-amber-400  bg-amber-400/10  border-amber-400/20' },
+  low:    { label: 'Baja',   class: 'text-emerald-400 bg-emerald-400/10 border-emerald-400/20' },
+}
