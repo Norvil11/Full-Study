@@ -7,10 +7,14 @@ import {
   Briefcase, LayoutDashboard,
   CheckSquare, Users, Zap, FileText,
   Upload, Paperclip, ExternalLink, ChevronRight,
-  Camera, TrendingUp, BarChart2, Target,
+  Camera, TrendingUp, BarChart2, Target, Trophy,
+  Medal, Crown, Star, ChevronUp, ChevronDown,
 } from 'lucide-react';
 
 // ─── CONSTANTS ────────────────────────────────────────────────────────────────
+// Reemplaza esta URL con la imagen de tu logo
+const LOGO_URL = "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a7/Camponotus_flavomarginatus_ant.jpg/320px-Camponotus_flavomarginatus_ant.jpg";
+
 const BG_IMAGE = "https://img.magnific.com/foto-gratis/colegas-sonrientes-tiro-medio-trabajo_23-2149308453.jpg?semt=ais_hybrid&w=740&q=80";
 const DOMAIN = '@hanter.com.pe';
 
@@ -42,6 +46,10 @@ const C = {
   warnLt:    '#FEF3C7',
   violet:    '#7C3AED',
   violetLt:  '#EDE9FE',
+  gold:      '#F59E0B',
+  goldLt:    '#FEF3C7',
+  silver:    '#94A3B8',
+  bronze:    '#D97706',
   darkBg:    '#000000',
   darkCard:  '#0D1117',
   darkBorder:'#1F2937',
@@ -72,6 +80,11 @@ function isOverdue(due, status) {
 }
 function initials(name = '') {
   return name.split(' ').slice(0, 2).map(w => w[0]?.toUpperCase() ?? '').join('');
+}
+function getDaysUntil(due) {
+  if (!due) return null;
+  const diff = new Date(due) - new Date();
+  return Math.ceil(diff / (1000 * 60 * 60 * 24));
 }
 
 // ─── AVATAR ───────────────────────────────────────────────────────────────────
@@ -202,7 +215,6 @@ function TaskDetailModal({ task, profiles, currentUserId, onClose, onStatusChang
 
           <div style={{ display: 'flex', gap: 10, justifyContent: 'space-between', alignItems: 'center', paddingTop: 16, borderTop: `1px solid ${C.border}` }}>
             <div style={{ display: 'flex', gap: 8 }}>
-              {/* Solo el asignado puede iniciar / completar */}
               {isAssigned && task.status !== 'completed' && (
                 <>
                   {task.status === 'pending' && (
@@ -218,7 +230,6 @@ function TaskDetailModal({ task, profiles, currentUserId, onClose, onStatusChang
                 </>
               )}
             </div>
-            {/* Solo el creador puede eliminar */}
             {isCreator && (
               <button onClick={() => { onDelete(task.id); onClose(); }}
                 style={{ padding: '8px 16px', borderRadius: '20px', border: `1.5px solid ${C.dangerLt}`, background: C.dangerLt, color: C.danger, fontSize: '12px', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5 }}>
@@ -239,6 +250,7 @@ function TicketCard({ task, currentUserId, profiles, onStatusChange, onDelete, o
   const isCreator  = task.created_by  === currentUserId;
   const isAssigned = task.assigned_to === currentUserId;
   const pCfg = PRIORITY_CONFIG[task.priority] || PRIORITY_CONFIG.medium;
+  const daysLeft = getDaysUntil(task.due_date);
 
   return (
     <div style={{
@@ -280,15 +292,20 @@ function TicketCard({ task, currentUserId, profiles, onStatusChange, onDelete, o
             <span style={{ color: C.navy, fontWeight: '600' }}>{assignee.full_name}</span>
           </div>
         )}
-        {task.due_date && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4, color: overdue ? C.danger : C.muted, fontWeight: overdue ? '700' : '400' }}>
+        {task.due_date && task.status !== 'completed' && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, color: overdue ? C.danger : daysLeft !== null && daysLeft <= 2 ? C.warn : C.muted, fontWeight: overdue ? '700' : daysLeft !== null && daysLeft <= 2 ? '600' : '400' }}>
             {overdue ? <AlertTriangle size={11} /> : <Calendar size={11} />}
-            {overdue ? `Vencido: ${formatDate(task.due_date)}` : `Vence: ${formatDate(task.due_date)}`}
+            {overdue
+              ? `Vencido: ${formatDate(task.due_date)}`
+              : daysLeft === 0 ? '⚡ Vence hoy'
+              : daysLeft === 1 ? '⚠️ Vence mañana'
+              : daysLeft !== null && daysLeft <= 3 ? `⚠️ ${daysLeft} días`
+              : `Vence: ${formatDate(task.due_date)}`
+            }
           </div>
         )}
       </div>
 
-      {/* Solo el asignado puede iniciar / completar */}
       {isAssigned && task.status !== 'completed' && (
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           {task.status === 'pending' && (
@@ -304,7 +321,6 @@ function TicketCard({ task, currentUserId, profiles, onStatusChange, onDelete, o
         </div>
       )}
 
-      {/* Solo el creador puede eliminar */}
       {isCreator && task.status !== 'completed' && !isAssigned && (
         <div style={{ display: 'flex', gap: 6 }}>
           <button onClick={() => onDelete(task.id)}
@@ -369,10 +385,32 @@ function NewTaskModal({ profiles, currentUserId, onClose, onCreated, preAssignTo
     }
   };
 
+  const handleDueDateChange = (e) => {
+    const val = e.target.value;
+    if (val) {
+      const selected = new Date(val);
+      const now = new Date();
+      now.setSeconds(0, 0);
+      if (selected < now) {
+        setError('Elige una fecha válida. La fecha límite no puede ser anterior a la actual.');
+        set('due_date', '');
+        return;
+      }
+    }
+    setError('');
+    set('due_date', val);
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!form.title.trim()) return setError('El título es obligatorio.');
     if (!form.assigned_to)  return setError('Debes asignar la tarea a alguien.');
+    if (form.due_date) {
+      const selected = new Date(form.due_date);
+      const now = new Date();
+      now.setSeconds(0, 0);
+      if (selected < now) return setError('Elige una fecha válida. La fecha límite no puede ser anterior a la actual.');
+    }
     setLoading(true); setError('');
     let fileUrl = null, fileName = null;
     if (file) {
@@ -393,6 +431,13 @@ function NewTaskModal({ profiles, currentUserId, onClose, onCreated, preAssignTo
     if (err) return setError(err.message);
     onCreated(data); onClose();
   };
+
+  // Min datetime string for the input
+  const minDatetime = (() => {
+    const now = new Date();
+    now.setSeconds(0, 0);
+    return now.toISOString().slice(0, 16);
+  })();
 
   const sel = { width: '100%', height: '44px', padding: '0 14px', borderRadius: '10px', border: `1.5px solid ${C.border}`, background: C.surface, color: C.text, fontSize: '14px', outline: 'none', boxSizing: 'border-box', appearance: 'none', cursor: 'pointer', fontFamily: 'inherit' };
   const inp = { width: '100%', height: '44px', padding: '0 14px', borderRadius: '10px', border: `1.5px solid ${C.border}`, background: C.surface, color: C.text, fontSize: '14px', outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit' };
@@ -440,9 +485,15 @@ function NewTaskModal({ profiles, currentUserId, onClose, onCreated, preAssignTo
               </div>
               <div>
                 <label style={lbl}>Fecha límite</label>
-                <input type="datetime-local" value={form.due_date} onChange={e => set('due_date', e.target.value)} style={inp}
+                <input
+                  type="datetime-local"
+                  value={form.due_date}
+                  min={minDatetime}
+                  onChange={handleDueDateChange}
+                  style={inp}
                   onFocus={e => { e.target.style.borderColor = C.blue; e.target.style.boxShadow = `0 0 0 3px ${C.accentLt}`; }}
-                  onBlur={e => { e.target.style.borderColor = C.border; e.target.style.boxShadow = 'none'; }} />
+                  onBlur={e => { e.target.style.borderColor = C.border; e.target.style.boxShadow = 'none'; }}
+                />
               </div>
             </div>
             <div>
@@ -487,148 +538,226 @@ function NewTaskModal({ profiles, currentUserId, onClose, onCreated, preAssignTo
 }
 
 // ─── STAT CARD ────────────────────────────────────────────────────────────────
-function StatCard({ icon: Icon, label, value, iconColor, iconBg, accent }) {
+function StatCard({ icon: Icon, label, value, iconColor, iconBg, accent, sublabel }) {
   return (
-    <div style={{ background: C.surface, border: `1.5px solid ${C.border}`, borderRadius: '16px', padding: '20px 20px 18px', display: 'flex', alignItems: 'center', gap: '14px', boxShadow: '0 1px 4px rgba(27,58,107,0.06)', borderTop: `3px solid ${accent}`, transition: 'box-shadow 0.2s, transform 0.15s' }}
-      onMouseEnter={e => { e.currentTarget.style.boxShadow = '0 4px 16px rgba(27,58,107,0.12)'; e.currentTarget.style.transform = 'translateY(-2px)'; }}
-      onMouseLeave={e => { e.currentTarget.style.boxShadow = '0 1px 4px rgba(27,58,107,0.06)'; e.currentTarget.style.transform = 'translateY(0)'; }}>
-      <div style={{ width: 46, height: 46, borderRadius: '13px', background: iconBg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-        <Icon size={20} color={iconColor} />
+    <div style={{
+      background: C.surface,
+      border: `1.5px solid ${C.border}`,
+      borderRadius: '18px',
+      padding: '20px 22px',
+      display: 'flex',
+      alignItems: 'center',
+      gap: '16px',
+      boxShadow: '0 2px 8px rgba(27,58,107,0.07)',
+      borderTop: `4px solid ${accent}`,
+      transition: 'box-shadow 0.2s, transform 0.15s',
+      flex: 1,
+      minWidth: 0,
+    }}
+      onMouseEnter={e => { e.currentTarget.style.boxShadow = '0 6px 20px rgba(27,58,107,0.13)'; e.currentTarget.style.transform = 'translateY(-2px)'; }}
+      onMouseLeave={e => { e.currentTarget.style.boxShadow = '0 2px 8px rgba(27,58,107,0.07)'; e.currentTarget.style.transform = 'translateY(0)'; }}>
+      <div style={{ width: 52, height: 52, borderRadius: '15px', background: iconBg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxShadow: `0 4px 12px ${iconBg}` }}>
+        <Icon size={22} color={iconColor} />
       </div>
-      <div>
-        <div style={{ fontSize: '28px', fontWeight: '800', color: C.navy, letterSpacing: '-0.03em', lineHeight: 1 }}>{value}</div>
-        <div style={{ fontSize: '12px', color: C.muted, marginTop: 3, fontWeight: '500' }}>{label}</div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: '32px', fontWeight: '900', color: C.navy, letterSpacing: '-0.04em', lineHeight: 1 }}>{value}</div>
+        <div style={{ fontSize: '12px', color: C.muted, marginTop: 4, fontWeight: '600' }}>{label}</div>
+        {sublabel && <div style={{ fontSize: '10px', color: C.mutedLt, marginTop: 2 }}>{sublabel}</div>}
       </div>
     </div>
   );
 }
 
-// ─── ANALYTICS DASHBOARD ─────────────────────────────────────────────────────
-function AnalyticsDashboard({ tasks, profiles, currentUserId }) {
-  // Group completed tasks by week (last 8 weeks)
+// ─── LEADERBOARD VIEW ─────────────────────────────────────────────────────────
+function LeaderboardView({ profiles, tasks }) {
   const now = new Date();
-  const weeks = Array.from({ length: 8 }, (_, i) => {
-    const start = new Date(now);
-    start.setDate(now.getDate() - (7 * (7 - i)));
-    const end = new Date(start); end.setDate(start.getDate() + 7);
-    return { start, end, label: `S${i + 1}` };
-  });
 
-  const completedByWeek = weeks.map(w =>
-    tasks.filter(t => t.status === 'completed' && t.completed_at && new Date(t.completed_at) >= w.start && new Date(t.completed_at) < w.end).length
-  );
-  const assignedByWeek = weeks.map(w =>
-    tasks.filter(t => t.created_at && new Date(t.created_at) >= w.start && new Date(t.created_at) < w.end).length
-  );
-  const overdueByWeek = weeks.map(w =>
-    tasks.filter(t => t.due_date && new Date(t.due_date) >= w.start && new Date(t.due_date) < w.end && t.status !== 'completed').length
-  );
+  const scores = profiles.map(profile => {
+    const assigned = tasks.filter(t => t.assigned_to === profile.id);
+    const completed = assigned.filter(t => t.status === 'completed').length;
+    const overdue = assigned.filter(t => isOverdue(t.due_date, t.status)).length;
+    const score = completed - overdue;
+    return { ...profile, completed, overdue, total: assigned.length, score };
+  }).sort((a, b) => b.score - a.score);
 
-  const maxVal = Math.max(...completedByWeek, ...assignedByWeek, ...overdueByWeek, 1);
-  const BAR_H = 120;
-
-  const totalCompleted = tasks.filter(t => t.status === 'completed').length;
-  const totalAssigned  = tasks.length;
-  const totalOverdue   = tasks.filter(t => isOverdue(t.due_date, t.status)).length;
-  const completionRate = totalAssigned > 0 ? Math.round((totalCompleted / totalAssigned) * 100) : 0;
-
-  // By priority breakdown
-  const byPriority = Object.entries(PRIORITY_CONFIG).map(([key, cfg]) => ({
-    key, cfg,
-    count: tasks.filter(t => t.priority === key).length,
-    done:  tasks.filter(t => t.priority === key && t.status === 'completed').length,
-  }));
-
-  const barSeries = [
-    { label: 'Asignadas', data: assignedByWeek, color: C.accent },
-    { label: 'Completadas', data: completedByWeek, color: C.success },
-    { label: 'Vencidas', data: overdueByWeek, color: C.danger },
+  const rankIcons = [
+    { icon: Crown,  color: C.gold,   bg: C.goldLt,   label: '1°' },
+    { icon: Medal,  color: C.silver, bg: '#F1F5F9',   label: '2°' },
+    { icon: Trophy, color: C.bronze, bg: '#FEF3C7',   label: '3°' },
   ];
+
+  // Calendar: upcoming tasks (next 14 days)
+  const upcomingTasks = tasks
+    .filter(t => t.due_date && t.status !== 'completed')
+    .map(t => {
+      const dueDate = new Date(t.due_date);
+      const diff = dueDate - now;
+      const days = Math.ceil(diff / (1000 * 60 * 60 * 24));
+      return { ...t, daysLeft: days, dueDate };
+    })
+    .filter(t => t.daysLeft >= -1 && t.daysLeft <= 14)
+    .sort((a, b) => a.dueDate - b.dueDate)
+    .slice(0, 10);
+
+  const getUrgencyStyle = (days) => {
+    if (days < 0) return { color: C.danger, bg: C.dangerLt, border: '#FECACA', label: 'Vencida' };
+    if (days === 0) return { color: C.danger, bg: '#FEE2E2', border: '#FECACA', label: 'Hoy' };
+    if (days === 1) return { color: C.warn, bg: C.warnLt, border: '#FDE68A', label: 'Mañana' };
+    if (days <= 3) return { color: C.warn, bg: C.warnLt, border: '#FDE68A', label: `${days} días` };
+    return { color: C.accent, bg: C.accentLt, border: '#BFDBFE', label: `${days} días` };
+  };
 
   return (
     <div style={{ animation: 'fadeUp 0.4s ease-out' }}>
       <div style={{ marginBottom: 28 }}>
-        <h2 style={{ margin: '0 0 4px', fontSize: '22px', fontWeight: '800', color: C.navy }}>Panel de Analítica</h2>
-        <p style={{ margin: 0, fontSize: '13px', color: C.muted }}>Evolución de tareas en las últimas 8 semanas</p>
+        <h2 style={{ margin: '0 0 4px', fontSize: '22px', fontWeight: '800', color: C.navy }}>🏆 Clasificación del Equipo</h2>
+        <p style={{ margin: 0, fontSize: '13px', color: C.muted }}>+1 punto por tarea completada · -1 punto por tarea vencida</p>
       </div>
 
-      {/* KPI row */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 24 }}>
-        {[
-          { icon: Target,      label: 'Total tareas',   value: totalAssigned,   accent: C.accent,  iconBg: C.accentLt,  iconColor: C.accent  },
-          { icon: CheckCircle2,label: 'Completadas',    value: totalCompleted,  accent: C.success, iconBg: C.successLt, iconColor: C.success },
-          { icon: AlertCircle, label: 'Vencidas',       value: totalOverdue,    accent: C.danger,  iconBg: C.dangerLt,  iconColor: C.danger  },
-          { icon: TrendingUp,  label: 'Tasa cumplim.', value: `${completionRate}%`, accent: C.violet, iconBg: C.violetLt, iconColor: C.violet },
-        ].map(({ icon: Ic, label, value, accent, iconBg, iconColor }) => (
-          <div key={label} style={{ background: C.surface, border: `1.5px solid ${C.border}`, borderRadius: '16px', padding: '18px', display: 'flex', alignItems: 'center', gap: 12, boxShadow: '0 1px 4px rgba(27,58,107,0.06)', borderTop: `3px solid ${accent}` }}>
-            <div style={{ width: 40, height: 40, borderRadius: '12px', background: iconBg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-              <Ic size={18} color={iconColor} />
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
+        {/* Leaderboard */}
+        <div>
+          {/* Top 3 podium */}
+          {scores.slice(0, 3).length > 0 && (
+            <div style={{ display: 'flex', gap: 12, marginBottom: 20, alignItems: 'flex-end' }}>
+              {scores.slice(0, 3).map((p, i) => {
+                const ri = rankIcons[i];
+                const heights = [140, 110, 95];
+                return (
+                  <div key={p.id} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+                    <div style={{ textAlign: 'center' }}>
+                      <Avatar name={p.full_name} size={i === 0 ? 52 : 40} photoUrl={p.avatar_url} />
+                      <div style={{ fontSize: i === 0 ? '13px' : '11px', fontWeight: '800', color: C.navy, marginTop: 6, maxWidth: 90, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.full_name.split(' ')[0]}</div>
+                      <div style={{ fontSize: '10px', color: C.muted, maxWidth: 90, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.cargo?.split(' ')[0]}</div>
+                    </div>
+                    <div style={{
+                      width: '100%', height: heights[i], borderRadius: '14px 14px 0 0',
+                      background: `linear-gradient(to bottom, ${ri.bg}, ${ri.bg}dd)`,
+                      border: `2px solid ${ri.color}33`,
+                      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4,
+                    }}>
+                      <ri.icon size={i === 0 ? 24 : 18} color={ri.color} />
+                      <div style={{ fontSize: i === 0 ? '28px' : '22px', fontWeight: '900', color: ri.color, letterSpacing: '-0.03em' }}>{p.score}</div>
+                      <div style={{ fontSize: '9px', fontWeight: '700', color: ri.color, opacity: 0.7 }}>pts</div>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
-            <div>
-              <div style={{ fontSize: '24px', fontWeight: '800', color: C.navy, letterSpacing: '-0.02em', lineHeight: 1 }}>{value}</div>
-              <div style={{ fontSize: '11px', color: C.muted, marginTop: 2, fontWeight: '500' }}>{label}</div>
-            </div>
-          </div>
-        ))}
-      </div>
+          )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 20 }}>
-        {/* Bar chart */}
-        <div style={{ background: C.surface, border: `1.5px solid ${C.border}`, borderRadius: '20px', padding: '24px', boxShadow: '0 1px 4px rgba(27,58,107,0.06)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-            <div>
-              <h3 style={{ margin: 0, fontSize: '14px', fontWeight: '800', color: C.navy }}>Evolución semanal</h3>
-              <p style={{ margin: '2px 0 0', fontSize: '11px', color: C.muted }}>Últimas 8 semanas</p>
+          {/* Full ranking list */}
+          <div style={{ background: C.surface, borderRadius: '20px', border: `1.5px solid ${C.border}`, overflow: 'hidden', boxShadow: '0 2px 8px rgba(27,58,107,0.07)' }}>
+            <div style={{ padding: '16px 20px', borderBottom: `1px solid ${C.border}`, background: `linear-gradient(to right, ${C.navy}, ${C.blue})` }}>
+              <span style={{ fontSize: '12px', fontWeight: '700', color: '#fff', letterSpacing: '0.05em', textTransform: 'uppercase' }}>Tabla de posiciones</span>
             </div>
-            <div style={{ display: 'flex', gap: 14 }}>
-              {barSeries.map(s => (
-                <div key={s.label} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                  <div style={{ width: 10, height: 10, borderRadius: '3px', background: s.color }} />
-                  <span style={{ fontSize: '11px', color: C.muted, fontWeight: '600' }}>{s.label}</span>
+            {scores.map((p, i) => (
+              <div key={p.id} style={{
+                display: 'flex', alignItems: 'center', gap: 12, padding: '14px 20px',
+                borderBottom: i < scores.length - 1 ? `1px solid ${C.border}` : 'none',
+                background: i === 0 ? `linear-gradient(to right, ${C.goldLt}88, transparent)` : i === 1 ? `linear-gradient(to right, #F1F5F988, transparent)` : i === 2 ? `linear-gradient(to right, ${C.warnLt}66, transparent)` : 'transparent',
+                transition: 'background 0.2s',
+              }}
+                onMouseEnter={e => { if (i > 2) e.currentTarget.style.background = C.bg; }}
+                onMouseLeave={e => { if (i > 2) e.currentTarget.style.background = 'transparent'; }}
+              >
+                <div style={{ width: 28, textAlign: 'center' }}>
+                  {i < 3
+                    ? React.createElement(rankIcons[i].icon, { size: 16, color: rankIcons[i].color })
+                    : <span style={{ fontSize: '13px', fontWeight: '700', color: C.mutedLt }}>#{i + 1}</span>
+                  }
                 </div>
-              ))}
-            </div>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, height: BAR_H + 24 }}>
-            {weeks.map((w, wi) => (
-              <div key={wi} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
-                <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2, height: BAR_H }}>
-                  {barSeries.map(s => {
-                    const h = Math.round((s.data[wi] / maxVal) * BAR_H);
-                    return (
-                      <div key={s.label} title={`${s.label}: ${s.data[wi]}`}
-                        style={{ width: 10, height: Math.max(h, 2), background: s.color, borderRadius: '3px 3px 0 0', transition: 'height 0.3s', opacity: 0.85 }} />
-                    );
-                  })}
+                <Avatar name={p.full_name} size={36} photoUrl={p.avatar_url} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: '13px', fontWeight: '700', color: C.navy, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.full_name}</div>
+                  <div style={{ fontSize: '10px', color: C.muted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.cargo}</div>
                 </div>
-                <span style={{ fontSize: '9px', color: C.mutedLt, fontWeight: '600' }}>{w.label}</span>
+                <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                  <div style={{ textAlign: 'center' }}>
+                    <div style={{ fontSize: '11px', fontWeight: '700', color: C.success }}>{p.completed}</div>
+                    <div style={{ fontSize: '9px', color: C.mutedLt }}>✓</div>
+                  </div>
+                  <div style={{ textAlign: 'center' }}>
+                    <div style={{ fontSize: '11px', fontWeight: '700', color: C.danger }}>-{p.overdue}</div>
+                    <div style={{ fontSize: '9px', color: C.mutedLt }}>⚠</div>
+                  </div>
+                  <div style={{
+                    minWidth: 48, textAlign: 'center', padding: '4px 10px', borderRadius: '20px',
+                    background: p.score > 0 ? C.successLt : p.score < 0 ? C.dangerLt : C.bg,
+                    border: `1.5px solid ${p.score > 0 ? '#BBF7D0' : p.score < 0 ? '#FECACA' : C.border}`,
+                  }}>
+                    <span style={{ fontSize: '14px', fontWeight: '800', color: p.score > 0 ? C.success : p.score < 0 ? C.danger : C.muted }}>
+                      {p.score > 0 ? '+' : ''}{p.score}
+                    </span>
+                  </div>
+                </div>
               </div>
             ))}
           </div>
         </div>
 
-        {/* Priority breakdown */}
-        <div style={{ background: C.surface, border: `1.5px solid ${C.border}`, borderRadius: '20px', padding: '24px', boxShadow: '0 1px 4px rgba(27,58,107,0.06)' }}>
-          <h3 style={{ margin: '0 0 4px', fontSize: '14px', fontWeight: '800', color: C.navy }}>Por prioridad</h3>
-          <p style={{ margin: '0 0 20px', fontSize: '11px', color: C.muted }}>Cumplimiento por nivel</p>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            {byPriority.map(({ key, cfg, count, done }) => {
-              const pct = count > 0 ? Math.round((done / count) * 100) : 0;
-              return (
-                <div key={key}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <div style={{ width: 8, height: 8, borderRadius: '50%', background: cfg.color }} />
-                      <span style={{ fontSize: '12px', fontWeight: '700', color: C.navy }}>{cfg.label}</span>
-                    </div>
-                    <span style={{ fontSize: '11px', color: C.muted }}>{done}/{count} · {pct}%</span>
-                  </div>
-                  <div style={{ height: 7, background: C.bg, borderRadius: '10px', overflow: 'hidden', border: `1px solid ${C.border}` }}>
-                    <div style={{ height: '100%', width: `${pct}%`, background: cfg.color, borderRadius: '10px', transition: 'width 0.5s' }} />
-                  </div>
+        {/* Calendar / Upcoming deadlines */}
+        <div>
+          <div style={{ background: C.surface, borderRadius: '20px', border: `1.5px solid ${C.border}`, overflow: 'hidden', boxShadow: '0 2px 8px rgba(27,58,107,0.07)' }}>
+            <div style={{ padding: '16px 20px', borderBottom: `1px solid ${C.border}`, background: `linear-gradient(to right, ${C.navy}, ${C.blue})`, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Calendar size={14} color="rgba(255,255,255,0.8)" />
+              <span style={{ fontSize: '12px', fontWeight: '700', color: '#fff', letterSpacing: '0.05em', textTransform: 'uppercase' }}>Próximas fechas límite</span>
+            </div>
+            <div style={{ padding: '8px 0', maxHeight: 420, overflowY: 'auto' }}>
+              {upcomingTasks.length === 0 ? (
+                <div style={{ padding: '40px 20px', textAlign: 'center', color: C.mutedLt, fontSize: '13px' }}>
+                  <Calendar size={32} color={C.border} style={{ margin: '0 auto 10px', display: 'block' }} />
+                  Sin fechas próximas
                 </div>
-              );
-            })}
+              ) : upcomingTasks.map(task => {
+                const assignee = profiles.find(p => p.id === task.assigned_to);
+                const urg = getUrgencyStyle(task.daysLeft);
+                return (
+                  <div key={task.id} style={{ padding: '12px 20px', borderBottom: `1px solid ${C.border}`, display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+                    <div style={{ flexShrink: 0, width: 52, height: 52, borderRadius: '12px', background: urg.bg, border: `1.5px solid ${urg.border}`, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+                      <div style={{ fontSize: '16px', fontWeight: '900', color: urg.color, lineHeight: 1 }}>
+                        {task.dueDate.getDate()}
+                      </div>
+                      <div style={{ fontSize: '9px', fontWeight: '700', color: urg.color, textTransform: 'uppercase' }}>
+                        {task.dueDate.toLocaleString('es-PE', { month: 'short' })}
+                      </div>
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: '13px', fontWeight: '700', color: C.navy, marginBottom: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{task.title}</div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                        {assignee && (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                            <Avatar name={assignee.full_name} size={16} photoUrl={assignee.avatar_url} />
+                            <span style={{ fontSize: '10px', color: C.muted }}>{assignee.full_name.split(' ')[0]}</span>
+                          </div>
+                        )}
+                        <span style={{ fontSize: '10px', fontWeight: '700', color: urg.color, background: urg.bg, padding: '1px 7px', borderRadius: '10px', border: `1px solid ${urg.border}` }}>
+                          {urg.label}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Mini stats */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 16 }}>
+            {[
+              { label: 'Promedio equipo', value: scores.length > 0 ? (scores.reduce((a, s) => a + s.score, 0) / scores.length).toFixed(1) : '0', color: C.blue, icon: BarChart2 },
+              { label: 'Líder actual', value: scores[0]?.full_name?.split(' ')[0] || '—', color: C.gold, icon: Crown },
+            ].map(({ label, value, color, icon: Ic }) => (
+              <div key={label} style={{ background: C.surface, borderRadius: '14px', padding: '14px 16px', border: `1.5px solid ${C.border}`, display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{ width: 36, height: 36, borderRadius: '10px', background: `${color}18`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <Ic size={16} color={color} />
+                </div>
+                <div>
+                  <div style={{ fontSize: '14px', fontWeight: '800', color: C.navy, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 90 }}>{value}</div>
+                  <div style={{ fontSize: '10px', color: C.muted }}>{label}</div>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       </div>
@@ -685,7 +814,6 @@ function TeamView({ profiles, tasks, currentUserId, onAssignTask }) {
               <div style={{ fontSize: '15px', fontWeight: '800', color: C.navy, marginBottom: 3 }}>{profile.full_name}</div>
               <div style={{ fontSize: '11px', color: C.muted, marginBottom: 10, padding: '3px 10px', background: C.bg, borderRadius: '20px', display: 'inline-block', border: `1px solid ${C.border}` }}>{profile.cargo || 'Colaborador'}</div>
 
-              {/* Completion rate */}
               <div style={{ marginBottom: 14, padding: '10px 12px', background: C.bg, borderRadius: '12px', border: `1px solid ${C.border}` }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
                   <span style={{ fontSize: '10px', fontWeight: '700', color: C.muted, letterSpacing: '0.04em', textTransform: 'uppercase' }}>Cumplimiento</span>
@@ -724,8 +852,6 @@ export default function App() {
   const [activeTab,     setActiveTab]     = useState('mine');
   const [authLoading,   setAuthLoading]   = useState(true);
   const [selectedTask,  setSelectedTask]  = useState(null);
-  const [logoUrl,       setLogoUrl]       = useState(null);
-  const logoFileRef = useRef();
 
   // Auth form
   const [authMode,    setAuthMode]    = useState('login');
@@ -744,8 +870,6 @@ export default function App() {
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session: s } }) => { setSession(s); setAuthLoading(false); });
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, s) => { setSession(s); setAuthLoading(false); });
-    const saved = localStorage.getItem('hanter_logo');
-    if (saved) setLogoUrl(saved);
     return () => subscription.unsubscribe();
   }, []);
 
@@ -779,12 +903,6 @@ export default function App() {
   const markNotifsRead = async () => {
     await supabase.from('notifications').update({ read: true }).eq('user_id', session.user.id).eq('read', false);
     setNotifications(prev => prev.map(n => ({ ...n, read: true })));
-  };
-  const handleLogoUpload = (e) => {
-    const f = e.target.files[0]; if (!f) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => { setLogoUrl(ev.target.result); localStorage.setItem('hanter_logo', ev.target.result); };
-    reader.readAsDataURL(f);
   };
 
   // ── AUTH ──────────────────────────────────────────────────────────────────
@@ -823,13 +941,13 @@ export default function App() {
       options: { data: { first_name: firstName.trim(), last_name: lastName.trim(), cargo: cargo.trim(), full_name: `${firstName.trim()} ${lastName.trim()}` } },
     });
     if (err) { setAuthError(err.message); setFormLoading(false); return; }
-    // Redirect to login with email prefilled, clear password
+    // Switch to login, prefill email, show success
     setAuthMode('login');
     setLoginEmail(email);
     setPassword('');
     setUsername(''); setFirstName(''); setLastName(''); setCargo('');
     setFieldErrors({});
-    setSuccessMsg(`¡Cuenta creada con éxito! Ingresa con ${email}`);
+    setSuccessMsg(`¡Cuenta creada con éxito! Ya puedes ingresar con ${email}`);
     setFormLoading(false);
   };
 
@@ -840,9 +958,11 @@ export default function App() {
   };
 
   // ── DERIVED ───────────────────────────────────────────────────────────────
-  const myPending    = tasks.filter(t => t.assigned_to === session?.user.id && t.status !== 'completed').length;
-  const myCompleted  = tasks.filter(t => t.assigned_to === session?.user.id && t.status === 'completed').length;
-  const overdueCount = tasks.filter(t => isOverdue(t.due_date, t.status) && (t.assigned_to === session?.user.id || t.created_by === session?.user.id)).length;
+  // Stats only from MY tasks (assigned_to === me)
+  const myTasks      = tasks.filter(t => t.assigned_to === session?.user.id);
+  const myPending    = myTasks.filter(t => t.status !== 'completed').length;
+  const myCompleted  = myTasks.filter(t => t.status === 'completed').length;
+  const overdueCount = myTasks.filter(t => isOverdue(t.due_date, t.status)).length;
   const unread = notifications.filter(n => !n.read).length;
 
   const filteredTasks = tasks.filter(t => {
@@ -872,26 +992,16 @@ export default function App() {
   // =========================================================================
   if (session) {
     const isTeamView      = activeTab === 'team';
-    const isAnalyticsView = activeTab === 'analytics';
+    const isLeaderboard   = activeTab === 'analytics';
 
-    const tabBtn = (tab, label, icon, highlight = false) => (
-      <button key={tab} onClick={() => setActiveTab(tab)}
-        style={{
-          padding: '8px 16px', borderRadius: '8px', border: 'none',
-          background: activeTab === tab ? C.navy : 'transparent',
-          color: activeTab === tab ? '#fff' : C.muted,
-          fontWeight: highlight ? '800' : '600',
-          fontSize: highlight ? '13px' : '12px',
-          cursor: 'pointer', transition: 'all 0.15s',
-          display: 'flex', alignItems: 'center', gap: 6,
-        }}
-        onMouseEnter={e => { if (activeTab !== tab) e.currentTarget.style.background = C.accentLt; }}
-        onMouseLeave={e => { if (activeTab !== tab) e.currentTarget.style.background = 'transparent'; }}
-      >
-        {icon && React.createElement(icon, { size: 13 })}
-        {label}
-      </button>
-    );
+    const TAB_CONFIG = [
+      { id: 'mine',      label: 'Mis Pendientes', icon: Clock,          highlight: true  },
+      { id: 'all',       label: 'Todas',          icon: LayoutDashboard, highlight: false },
+      { id: 'created',   label: 'Creadas por mí', icon: Briefcase,      highlight: false },
+      { id: 'completed', label: 'Completadas',    icon: CheckCircle2,   highlight: false },
+      { id: 'team',      label: 'Equipo',         icon: Users,          highlight: false },
+      { id: 'analytics', label: 'Analítica',      icon: Trophy,         highlight: false },
+    ];
 
     return (
       <div style={{ minHeight: '100vh', background: C.bg, color: C.text, fontFamily: "'Sora', 'Plus Jakarta Sans', sans-serif" }}>
@@ -909,20 +1019,15 @@ export default function App() {
         {/* NAVBAR */}
         <header style={{ width: '100%', height: '64px', background: C.surface, borderBottom: `1.5px solid ${C.border}`, padding: '0 28px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'sticky', top: 0, zIndex: 100, boxShadow: '0 2px 12px rgba(27,58,107,0.08)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <div onClick={() => logoFileRef.current?.click()} style={{ cursor: 'pointer', position: 'relative' }} title="Clic para cambiar logo">
-              {logoUrl
-                ? <img src={logoUrl} alt="Logo" style={{ width: 36, height: 36, borderRadius: '10px', objectFit: 'cover', border: `1.5px solid ${C.border}` }} />
-                : (
-                  <div style={{ width: 36, height: 36, borderRadius: '10px', background: C.navy, display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
-                    <Zap size={18} color="#fff" />
-                    <div style={{ position: 'absolute', bottom: -3, right: -3, width: 14, height: 14, borderRadius: '50%', background: C.blue, border: '2px solid #fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <Camera size={7} color="#fff" />
-                    </div>
-                  </div>
-                )
-              }
+            {/* Logo from URL — replace LOGO_URL constant to change it */}
+            <div style={{ width: 36, height: 36, borderRadius: '10px', overflow: 'hidden', border: `1.5px solid ${C.border}`, flexShrink: 0 }}>
+              <img
+                src={LOGO_URL}
+                alt="Logo"
+                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                onError={e => { e.target.style.display = 'none'; }}
+              />
             </div>
-            <input ref={logoFileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleLogoUpload} />
             <div>
               <span style={{ fontWeight: '800', fontSize: '15px', color: C.navy }}>Hanter</span>
               <span style={{ fontWeight: '400', fontSize: '15px', color: C.accent, marginLeft: 4 }}>Workspace</span>
@@ -979,46 +1084,89 @@ export default function App() {
         </header>
 
         {/* MAIN */}
-        <main style={{ maxWidth: '1300px', margin: '0 auto', padding: '36px 28px', animation: 'fadeUp 0.4s ease-out' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 32, flexWrap: 'wrap', gap: 16 }}>
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-                <div style={{ width: 4, height: 28, borderRadius: '4px', background: `linear-gradient(to bottom, ${C.blue}, ${C.accent})` }} />
-                <h1 style={{ margin: 0, fontSize: '26px', fontWeight: '900', color: C.navy, letterSpacing: '-0.025em' }}>
-                  Bienvenido, {profile?.full_name?.split(' ')[0] ?? 'Usuario'}
-                </h1>
+        <main style={{ maxWidth: '1300px', margin: '0 auto', padding: '32px 28px', animation: 'fadeUp 0.4s ease-out' }}>
+
+          {/* TABS + STAT CARDS in same row */}
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 20, marginBottom: 28, flexWrap: 'wrap' }}>
+            {/* Tab navigation */}
+            <div style={{ background: C.surface, borderRadius: '14px', padding: '5px', display: 'flex', flexDirection: 'column', gap: 3, border: `1.5px solid ${C.border}`, boxShadow: '0 2px 8px rgba(27,58,107,0.07)', minWidth: 180, flexShrink: 0 }}>
+              {TAB_CONFIG.map(({ id, label, icon: Ic, highlight }) => (
+                <button key={id} onClick={() => setActiveTab(id)}
+                  style={{
+                    padding: '9px 14px', borderRadius: '10px', border: 'none',
+                    background: activeTab === id
+                      ? `linear-gradient(135deg, ${C.navy} 0%, ${C.blue} 100%)`
+                      : 'transparent',
+                    color: activeTab === id ? '#fff' : C.muted,
+                    fontWeight: activeTab === id ? '700' : '500',
+                    fontSize: '12px', cursor: 'pointer',
+                    transition: 'all 0.15s',
+                    display: 'flex', alignItems: 'center', gap: 8,
+                    textAlign: 'left',
+                    boxShadow: activeTab === id ? '0 3px 10px rgba(37,99,235,0.25)' : 'none',
+                  }}
+                  onMouseEnter={e => { if (activeTab !== id) { e.currentTarget.style.background = C.accentLt; e.currentTarget.style.color = C.navy; } }}
+                  onMouseLeave={e => { if (activeTab !== id) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = C.muted; } }}
+                >
+                  <Ic size={13} />
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            {/* Stat cards + New task button */}
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 14, minWidth: 0 }}>
+              {/* New task button + greeting */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <div style={{ fontSize: '11px', color: C.muted, fontWeight: '500', marginBottom: 2 }}>
+                    {profile?.cargo}
+                  </div>
+                </div>
+                <button onClick={() => { setPreAssignTo(null); setShowNewTask(true); }}
+                  style={{ padding: '10px 22px', background: `linear-gradient(135deg, ${C.navy} 0%, ${C.blue} 100%)`, color: '#fff', border: 'none', borderRadius: '20px', fontSize: '13px', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, boxShadow: '0 4px 16px rgba(37,99,235,0.30)', transition: 'all 0.15s', flexShrink: 0 }}
+                  onMouseEnter={e => e.currentTarget.style.opacity = '0.88'}
+                  onMouseLeave={e => e.currentTarget.style.opacity = '1'}>
+                  <Plus size={16} /> Nueva Tarea
+                </button>
               </div>
-              <p style={{ margin: 0, color: C.muted, fontSize: '13px', fontWeight: '500', paddingLeft: 14 }}>{profile?.cargo}</p>
-            </div>
-            <button onClick={() => { setPreAssignTo(null); setShowNewTask(true); }}
-              style={{ padding: '10px 22px', background: `linear-gradient(135deg, ${C.navy} 0%, ${C.blue} 100%)`, color: '#fff', border: 'none', borderRadius: '20px', fontSize: '13px', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, boxShadow: '0 4px 16px rgba(37,99,235,0.30)', transition: 'all 0.15s' }}
-              onMouseEnter={e => e.currentTarget.style.opacity = '0.88'}
-              onMouseLeave={e => e.currentTarget.style.opacity = '1'}>
-              <Plus size={16} /> Nueva Tarea
-            </button>
-          </div>
 
-          {!isTeamView && !isAnalyticsView && (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14, marginBottom: 28 }}>
-              <StatCard icon={Clock}        label="Mis Pendientes" value={myPending}    iconColor={C.accent}  iconBg={C.accentLt}  accent={C.accent} />
-              <StatCard icon={CheckCircle2} label="Completadas"    value={myCompleted}  iconColor={C.success} iconBg={C.successLt} accent={C.success} />
-              <StatCard icon={AlertCircle}  label="Vencidas"       value={overdueCount} iconColor={C.danger}  iconBg={C.dangerLt}  accent={C.danger} />
+              {/* Stats row */}
+              <div style={{ display: 'flex', gap: 14 }}>
+                <StatCard
+                  icon={Clock}
+                  label="Mis Pendientes"
+                  value={myPending}
+                  iconColor={C.accent}
+                  iconBg={C.accentLt}
+                  accent={C.accent}
+                  sublabel="tareas sin completar"
+                />
+                <StatCard
+                  icon={CheckCircle2}
+                  label="Completadas"
+                  value={myCompleted}
+                  iconColor={C.success}
+                  iconBg={C.successLt}
+                  accent={C.success}
+                  sublabel="tareas finalizadas"
+                />
+                <StatCard
+                  icon={AlertCircle}
+                  label="Vencidas"
+                  value={overdueCount}
+                  iconColor={C.danger}
+                  iconBg={C.dangerLt}
+                  accent={C.danger}
+                  sublabel="requieren atención"
+                />
+              </div>
             </div>
-          )}
-
-          {/* TABS */}
-          <div style={{ background: C.surface, borderRadius: '12px', padding: '5px', display: 'inline-flex', gap: 3, marginBottom: 28, border: `1.5px solid ${C.border}`, boxShadow: '0 1px 4px rgba(27,58,107,0.06)' }}>
-            {tabBtn('mine',      'Mis Pendientes', Clock,          true)}
-            {tabBtn('all',       'Todas',          LayoutDashboard)}
-            {tabBtn('created',   'Creadas por mí', Briefcase)}
-            {tabBtn('completed', 'Completadas',    CheckCircle2)}
-            {tabBtn('team',      'Equipo',         Users)}
-            {tabBtn('analytics', 'Analítica',      BarChart2)}
           </div>
 
           {/* VIEWS */}
-          {isAnalyticsView ? (
-            <AnalyticsDashboard tasks={tasks} profiles={profiles} currentUserId={session.user.id} />
+          {isLeaderboard ? (
+            <LeaderboardView tasks={tasks} profiles={profiles} />
           ) : isTeamView ? (
             <TeamView profiles={profiles} tasks={tasks} currentUserId={session.user.id} onAssignTask={(id) => { setPreAssignTo(id); setShowNewTask(true); }} />
           ) : activeTab !== 'completed' ? (
@@ -1077,78 +1225,87 @@ export default function App() {
   // =========================================================================
   const darkInp = {
     width: '100%', height: '46px', padding: '0 16px',
-    borderRadius: '10px', border: `1.5px solid ${C.darkBorder}`,
-    background: 'rgba(255,255,255,0.07)', color: '#fff',
+    borderRadius: '10px', border: `1.5px solid rgba(0,0,0,0.12)`,
+    background: '#fff',
+    color: C.navy,
     fontSize: '14px', outline: 'none', boxSizing: 'border-box',
     fontFamily: "'Sora', sans-serif", transition: 'border-color 0.15s, box-shadow 0.15s',
   };
-  const darkLbl = { display: 'block', fontSize: '11px', fontWeight: '600', color: '#9CA3AF', marginBottom: 6, letterSpacing: '0.05em', textTransform: 'uppercase' };
+  const darkLbl = { display: 'block', fontSize: '11px', fontWeight: '700', color: C.navy, marginBottom: 6, letterSpacing: '0.05em', textTransform: 'uppercase' };
   const errBorder = { borderColor: '#EF4444' };
 
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', position: 'relative', overflow: 'hidden', background: '#000', backgroundImage: `url(${BG_IMAGE})`, backgroundSize: 'cover', backgroundPosition: 'center', fontFamily: "'Sora', sans-serif" }}>
+    <div style={{ minHeight: '100vh', display: 'flex', position: 'relative', overflow: 'hidden', background: '#000', fontFamily: "'Sora', sans-serif" }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700;800;900&display=swap');
         @keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
         @keyframes fadeUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
         *{box-sizing:border-box} body{margin:0}
-        .dark-input::placeholder{color:#4B5563}
-        .dark-input:focus{border-color:${C.accent}!important;box-shadow:0 0 0 3px rgba(91,155,213,0.15)!important;background:rgba(255,255,255,0.10)!important}
+        .dark-input::placeholder{color:#94A3B8}
+        .dark-input:focus{border-color:${C.accent}!important;box-shadow:0 0 0 3px rgba(91,155,213,0.2)!important;background:#fff!important}
         .auth-tab{transition:all 0.2s}
       `}</style>
 
-      {/* Darker overlay so bg is visible but dark */}
-      <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(135deg, rgba(0,0,0,0.82) 0%, rgba(5,10,30,0.78) 100%)', backdropFilter: 'blur(1px)' }} />
+      {/* Background image with black overlay — background stays visible, overlay is pure black with high opacity */}
+      <div style={{
+        position: 'absolute', inset: 0,
+        backgroundImage: `url(${BG_IMAGE})`,
+        backgroundSize: 'cover', backgroundPosition: 'center',
+        filter: 'brightness(0.35) saturate(0.6)',
+      }} />
+      {/* Extra pure black vignette */}
+      <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(ellipse at center, rgba(0,0,0,0.3) 0%, rgba(0,0,0,0.75) 100%)' }} />
 
       <div style={{ position: 'relative', zIndex: 10, width: '100%', display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: '40px 64px', maxWidth: '1200px', margin: '0 auto', gap: '64px' }}>
         {/* Left copy */}
         <div style={{ flex: 1, color: '#fff', maxWidth: '480px', animation: 'fadeUp 0.5s ease-out' }}>
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: 'rgba(91,155,213,0.15)', border: '1px solid rgba(91,155,213,0.3)', borderRadius: '100px', padding: '5px 14px', marginBottom: 24 }}>
-            <Zap size={12} color={C.accent} />
+      
             <span style={{ fontSize: '11px', fontWeight: '700', color: C.accent, letterSpacing: '0.12em', textTransform: 'uppercase' }}>Bienvenido a</span>
           </div>
           <h1 style={{ margin: '0 0 4px', fontSize: '64px', fontWeight: '900', lineHeight: '1', letterSpacing: '-0.04em', color: '#fff' }}>Hanter</h1>
           <h1 style={{ margin: '0 0 24px', fontSize: '64px', fontWeight: '900', lineHeight: '1', letterSpacing: '-0.04em', color: C.accent }}>Workspace</h1>
           <p style={{ margin: 0, fontSize: '15px', color: 'rgba(255,255,255,0.55)', fontWeight: '300', lineHeight: '1.80', maxWidth: '380px' }}>
-            Sabemos que estabas viendo videos de gatitos, pero tu equipo te extraña. Entra, liquida tus pendientes rápido y vuelve a lo tuyo. ¡Tú puedes!
+            Hanter impulsa la transformación digital de empresas mediante el desarrollo de aplicaciones, páginas web y soluciones de automatización, ofreciendo tecnología innovadora, eficiente y confiable para optimizar procesos y potenciar resultados.
           </p>
-          <div style={{ marginTop: 40, display: 'flex', flexDirection: 'column', gap: 12 }}>
-            
-          </div>
         </div>
 
-        {/* Auth card */}
-        <div style={{ width: '100%', maxWidth: '420px', background: 'rgba(10,14,25,0.90)', backdropFilter: 'blur(24px)', borderRadius: '24px', border: '1px solid rgba(255,255,255,0.07)', boxShadow: '0 32px 80px rgba(0,0,0,0.7)', overflow: 'hidden', animation: 'fadeUp 0.5s ease-out 0.1s both' }}>
+        {/* Auth card — WHITE body */}
+        <div style={{ width: '100%', maxWidth: '420px', background: '#ffffff', backdropFilter: 'blur(24px)', borderRadius: '24px', border: '1px solid rgba(0,0,0,0.08)', boxShadow: '0 32px 80px rgba(0,0,0,0.5)', overflow: 'hidden', animation: 'fadeUp 0.5s ease-out 0.1s both' }}>
           {/* Tabs */}
-          <div style={{ display: 'flex', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+          <div style={{ display: 'flex', borderBottom: `1px solid ${C.border}` }}>
             {[['login', 'Ingresar'], ['signup', 'Crear cuenta']].map(([mode, label]) => (
               <button key={mode} className="auth-tab" onClick={() => { setAuthMode(mode); resetForm(); }}
-                style={{ flex: 1, padding: '18px 0', border: 'none', cursor: 'pointer', fontFamily: 'inherit', background: authMode === mode ? 'rgba(91,155,213,0.1)' : 'transparent', color: authMode === mode ? C.accent : '#6B7280', fontSize: '13px', fontWeight: '700', borderBottom: authMode === mode ? `2px solid ${C.accent}` : '2px solid transparent', transition: 'all 0.2s' }}>
+                style={{ flex: 1, padding: '18px 0', border: 'none', cursor: 'pointer', fontFamily: 'inherit', background: authMode === mode ? 'rgba(37,99,235,0.05)' : 'transparent', color: authMode === mode ? C.blue : C.muted, fontSize: '13px', fontWeight: '700', borderBottom: authMode === mode ? `2px solid ${C.blue}` : '2px solid transparent', transition: 'all 0.2s' }}>
                 {label}
               </button>
             ))}
           </div>
 
           <div style={{ padding: '28px' }}>
-            {authError && <div style={{ padding: '10px 14px', background: 'rgba(220,38,38,0.12)', border: '1px solid rgba(220,38,38,0.3)', borderRadius: '10px', color: '#FCA5A5', fontSize: '12px', marginBottom: 16, fontWeight: '600' }}>{authError}</div>}
-            {successMsg && <div style={{ padding: '10px 14px', background: 'rgba(22,163,74,0.12)', border: '1px solid rgba(22,163,74,0.3)', borderRadius: '10px', color: '#86EFAC', fontSize: '12px', marginBottom: 16, fontWeight: '600' }}>{successMsg}</div>}
+            {authError && <div style={{ padding: '10px 14px', background: C.dangerLt, border: `1px solid #FECACA`, borderRadius: '10px', color: C.danger, fontSize: '12px', marginBottom: 16, fontWeight: '600' }}>{authError}</div>}
+            {successMsg && (
+              <div style={{ padding: '12px 16px', background: C.successLt, border: `1.5px solid #BBF7D0`, borderRadius: '12px', color: C.success, fontSize: '12px', marginBottom: 16, fontWeight: '600', display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                <CheckCircle2 size={16} style={{ flexShrink: 0, marginTop: 1 }} />
+                <span>{successMsg}</span>
+              </div>
+            )}
 
             <form onSubmit={authMode === 'signup' ? handleSignUp : handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               {authMode === 'signup' && (
                 <>
-                  {/* Username with domain suffix */}
                   <div>
                     <label style={darkLbl}>Usuario *</label>
                     <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
                       <input className="dark-input" style={{ ...darkInp, borderRadius: '10px 0 0 10px', ...(fieldErrors.username ? errBorder : {}) }}
                         placeholder="donan.chavez" value={username}
                         onChange={e => { setUsername(e.target.value.replace(/\s/g, '').toLowerCase()); setFieldErrors(x => ({ ...x, username: undefined })); }} required />
-                      <div style={{ height: '46px', padding: '0 12px', background: 'rgba(91,155,213,0.15)', border: `1.5px solid ${C.darkBorder}`, borderLeft: 'none', borderRadius: '0 10px 10px 0', display: 'flex', alignItems: 'center', whiteSpace: 'nowrap', fontSize: '13px', color: C.accent, fontWeight: '600' }}>
+                      <div style={{ height: '46px', padding: '0 12px', background: C.accentLt, border: `1.5px solid rgba(0,0,0,0.12)`, borderLeft: 'none', borderRadius: '0 10px 10px 0', display: 'flex', alignItems: 'center', whiteSpace: 'nowrap', fontSize: '13px', color: C.blue, fontWeight: '600' }}>
                         {DOMAIN}
                       </div>
                     </div>
-                    {fieldErrors.username && <p style={{ margin: '3px 0 0', fontSize: '10px', color: '#FCA5A5' }}>{fieldErrors.username}</p>}
-                    <p style={{ margin: '4px 0 0', fontSize: '10px', color: '#6B7280' }}>Tu correo será: {username || 'usuario'}{DOMAIN}</p>
+                    {fieldErrors.username && <p style={{ margin: '3px 0 0', fontSize: '10px', color: C.danger }}>{fieldErrors.username}</p>}
+                    <p style={{ margin: '4px 0 0', fontSize: '10px', color: C.muted }}>Tu correo será: {username || 'usuario'}{DOMAIN}</p>
                   </div>
 
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
@@ -1157,14 +1314,14 @@ export default function App() {
                       <input className="dark-input" style={{ ...darkInp, ...(fieldErrors.firstName ? errBorder : {}) }}
                         placeholder="Juan" value={firstName}
                         onChange={e => { setFirstName(e.target.value); setFieldErrors(x => ({ ...x, firstName: undefined })); }} required />
-                      {fieldErrors.firstName && <p style={{ margin: '3px 0 0', fontSize: '10px', color: '#FCA5A5' }}>{fieldErrors.firstName}</p>}
+                      {fieldErrors.firstName && <p style={{ margin: '3px 0 0', fontSize: '10px', color: C.danger }}>{fieldErrors.firstName}</p>}
                     </div>
                     <div>
                       <label style={darkLbl}>Apellidos *</label>
                       <input className="dark-input" style={{ ...darkInp, ...(fieldErrors.lastName ? errBorder : {}) }}
                         placeholder="Pérez" value={lastName}
                         onChange={e => { setLastName(e.target.value); setFieldErrors(x => ({ ...x, lastName: undefined })); }} required />
-                      {fieldErrors.lastName && <p style={{ margin: '3px 0 0', fontSize: '10px', color: '#FCA5A5' }}>{fieldErrors.lastName}</p>}
+                      {fieldErrors.lastName && <p style={{ margin: '3px 0 0', fontSize: '10px', color: C.danger }}>{fieldErrors.lastName}</p>}
                     </div>
                   </div>
 
@@ -1174,7 +1331,7 @@ export default function App() {
                       placeholder="Escribe o selecciona tu cargo..." value={cargo}
                       onChange={e => { setCargo(e.target.value); setFieldErrors(x => ({ ...x, cargo: undefined })); }} required />
                     <datalist id="cargo-opts">{CARGO_OPTIONS.map(c => <option key={c} value={c} />)}</datalist>
-                    {fieldErrors.cargo && <p style={{ margin: '3px 0 0', fontSize: '10px', color: '#FCA5A5' }}>{fieldErrors.cargo}</p>}
+                    {fieldErrors.cargo && <p style={{ margin: '3px 0 0', fontSize: '10px', color: C.danger }}>{fieldErrors.cargo}</p>}
                   </div>
                 </>
               )}
@@ -1185,7 +1342,7 @@ export default function App() {
                   <input className="dark-input" style={{ ...darkInp, ...(fieldErrors.loginEmail ? errBorder : {}) }}
                     type="email" placeholder="donan.chavez@hanter.com.pe"
                     value={loginEmail} onChange={e => { setLoginEmail(e.target.value); setFieldErrors(x => ({ ...x, loginEmail: undefined })); }} required />
-                  {fieldErrors.loginEmail && <p style={{ margin: '3px 0 0', fontSize: '10px', color: '#FCA5A5' }}>{fieldErrors.loginEmail}</p>}
+                  {fieldErrors.loginEmail && <p style={{ margin: '3px 0 0', fontSize: '10px', color: C.danger }}>{fieldErrors.loginEmail}</p>}
                 </div>
               )}
 
@@ -1196,15 +1353,15 @@ export default function App() {
                     type={showPass ? 'text' : 'password'} placeholder="••••••••" value={password}
                     onChange={e => { setPassword(e.target.value); setFieldErrors(x => ({ ...x, password: undefined })); }} required />
                   <button type="button" onClick={() => setShowPass(v => !v)}
-                    style={{ position: 'absolute', right: 13, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: '#6B7280', display: 'flex' }}>
+                    style={{ position: 'absolute', right: 13, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: C.muted, display: 'flex' }}>
                     {showPass ? <EyeOff size={16} /> : <Eye size={16} />}
                   </button>
                 </div>
-                {fieldErrors.password && <p style={{ margin: '3px 0 0', fontSize: '10px', color: '#FCA5A5' }}>{fieldErrors.password}</p>}
+                {fieldErrors.password && <p style={{ margin: '3px 0 0', fontSize: '10px', color: C.danger }}>{fieldErrors.password}</p>}
               </div>
 
               <button type="submit" disabled={formLoading}
-                style={{ width: '100%', height: '48px', background: authMode === 'signup' ? `linear-gradient(135deg, ${C.blue} 0%, ${C.accent} 100%)` : `linear-gradient(135deg, ${C.blue} 0%, ${C.navy} 100%)`, color: '#fff', border: 'none', borderRadius: '12px', fontSize: '14px', fontWeight: '700', cursor: formLoading ? 'not-allowed' : 'pointer', marginTop: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9, opacity: formLoading ? 0.75 : 1, transition: 'all 0.15s', boxShadow: '0 4px 20px rgba(37,99,235,0.35)', fontFamily: 'inherit' }}>
+                style={{ width: '100%', height: '48px', background: `linear-gradient(135deg, ${C.blue} 0%, ${C.navy} 100%)`, color: '#fff', border: 'none', borderRadius: '12px', fontSize: '14px', fontWeight: '700', cursor: formLoading ? 'not-allowed' : 'pointer', marginTop: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9, opacity: formLoading ? 0.75 : 1, transition: 'all 0.15s', boxShadow: '0 4px 20px rgba(37,99,235,0.35)', fontFamily: 'inherit' }}>
                 {formLoading && <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} />}
                 {!formLoading && (authMode === 'signup' ? 'Crear cuenta' : 'Ingresar al workspace')}
                 {formLoading && (authMode === 'signup' ? 'Creando...' : 'Ingresando...')}
