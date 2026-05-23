@@ -10,11 +10,10 @@ import {
   Camera, TrendingUp, BarChart2, Target, Trophy,
   Medal, Crown, Star, ChevronUp, ChevronDown,
 } from 'lucide-react';
-
+import logoHS from './LOGO_HS_SF.png'; 
 // ─── CONSTANTS ────────────────────────────────────────────────────────────────
 // Reemplaza esta URL con la imagen de tu logo
-const LOGO_URL = "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a7/Camponotus_flavomarginatus_ant.jpg/320px-Camponotus_flavomarginatus_ant.jpg";
-
+const LOGO_URL = logoHS;
 const BG_IMAGE = "https://img.magnific.com/foto-gratis/colegas-sonrientes-tiro-medio-trabajo_23-2149308453.jpg?semt=ais_hybrid&w=740&q=80";
 const DOMAIN = '@hanter.com.pe';
 
