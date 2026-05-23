@@ -1110,17 +1110,10 @@ export default function App() {
           <h1 style={{ margin: '0 0 4px', fontSize: '64px', fontWeight: '900', lineHeight: '1', letterSpacing: '-0.04em', color: '#fff' }}>Hanter</h1>
           <h1 style={{ margin: '0 0 24px', fontSize: '64px', fontWeight: '900', lineHeight: '1', letterSpacing: '-0.04em', color: C.accent }}>Workspace</h1>
           <p style={{ margin: 0, fontSize: '15px', color: 'rgba(255,255,255,0.55)', fontWeight: '300', lineHeight: '1.80', maxWidth: '380px' }}>
-            Gestiona tus tareas, haz seguimiento en tiempo real y colabora con tu equipo con total autonomía.
+            Sabemos que estabas viendo videos de gatitos, pero tu equipo te extraña. Entra, liquida tus pendientes rápido y vuelve a lo tuyo. ¡Tú puedes!
           </p>
           <div style={{ marginTop: 40, display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {['Tablero Kanban en tiempo real', 'Notificaciones automáticas', 'Control por prioridad y fecha límite'].map(f => (
-              <div key={f} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <div style={{ width: 20, height: 20, borderRadius: '50%', background: 'rgba(91,155,213,0.15)', border: '1px solid rgba(91,155,213,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                  <CheckCircle2 size={11} color={C.accent} />
-                </div>
-                <span style={{ fontSize: '13px', color: 'rgba(255,255,255,0.65)', fontWeight: '400' }}>{f}</span>
-              </div>
-            ))}
+            
           </div>
         </div>
 
