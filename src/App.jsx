@@ -1,18 +1,18 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from './lib/supabase';
 import {
   Eye, EyeOff, LogOut, Plus, Calendar,
   CheckCircle2, Clock, AlertCircle, Trash2,
   Bell, X, AlertTriangle, Loader2, Send,
-  ChevronDown, Briefcase, LayoutDashboard,
-  CheckSquare, Users, Zap, Search, FileText,
+  Briefcase, LayoutDashboard,
+  CheckSquare, Users, Zap, FileText,
   Upload, Paperclip, ExternalLink, ChevronRight,
-  UserCircle, Camera, Shield, Award,
+  Camera, TrendingUp, BarChart2, Target,
 } from 'lucide-react';
 
-// ─── CONSTANTS ──────────────────────────────────────────────────────────────
-
+// ─── CONSTANTS ────────────────────────────────────────────────────────────────
 const BG_IMAGE = "https://img.magnific.com/foto-gratis/colegas-sonrientes-tiro-medio-trabajo_23-2149308453.jpg?semt=ais_hybrid&w=740&q=80";
+const DOMAIN = '@hanter.com.pe';
 
 const CARGO_OPTIONS = [
   "Especialista en Marketing Digital & Growth",
@@ -42,8 +42,8 @@ const C = {
   warnLt:    '#FEF3C7',
   violet:    '#7C3AED',
   violetLt:  '#EDE9FE',
-  darkBg:    '#0A0F1E',
-  darkCard:  '#111827',
+  darkBg:    '#000000',
+  darkCard:  '#0D1117',
   darkBorder:'#1F2937',
   darkMuted: '#6B7280',
 };
@@ -56,12 +56,12 @@ const PRIORITY_CONFIG = {
 };
 
 const STATUS_COLS = [
-  { status: 'pending',     label: 'Por Hacer',   dot: C.mutedLt,  tag: '#F1F5F9', tagText: C.muted  },
-  { status: 'in_progress', label: 'En Proceso',  dot: C.blue,     tag: C.accentLt, tagText: C.navy  },
-  { status: 'completed',   label: 'Completado',  dot: C.success,  tag: C.successLt, tagText: C.success },
+  { status: 'pending',     label: 'Por Hacer',  dot: C.mutedLt,  tag: '#F1F5F9',   tagText: C.muted   },
+  { status: 'in_progress', label: 'En Proceso', dot: C.blue,     tag: C.accentLt,  tagText: C.navy    },
+  { status: 'completed',   label: 'Completado', dot: C.success,  tag: C.successLt, tagText: C.success },
 ];
 
-// ─── HELPERS ────────────────────────────────────────────────────────────────
+// ─── HELPERS ─────────────────────────────────────────────────────────────────
 function formatDate(d) {
   if (!d) return '—';
   return new Date(d).toLocaleDateString('es-PE', { day: '2-digit', month: 'short', year: 'numeric' });
@@ -74,7 +74,7 @@ function initials(name = '') {
   return name.split(' ').slice(0, 2).map(w => w[0]?.toUpperCase() ?? '').join('');
 }
 
-// ─── UI PRIMITIVES ───────────────────────────────────────────────────────────
+// ─── AVATAR ───────────────────────────────────────────────────────────────────
 function Avatar({ name = '', size = 32, photoUrl = null }) {
   const colors = [
     ['#DBEAFE','#1B3A6B'], ['#EDE9FE','#5B21B6'],
@@ -83,23 +83,11 @@ function Avatar({ name = '', size = 32, photoUrl = null }) {
   ];
   let h = 0; for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
   const [bg, fg] = colors[h % colors.length];
-
   if (photoUrl) {
-    return (
-      <img src={photoUrl} alt={name}
-        style={{ width: size, height: size, borderRadius: '50%', objectFit: 'cover', flexShrink: 0, border: `2px solid ${C.border}` }}
-      />
-    );
+    return <img src={photoUrl} alt={name} style={{ width: size, height: size, borderRadius: '50%', objectFit: 'cover', flexShrink: 0, border: `2px solid ${C.border}` }} />;
   }
-
   return (
-    <div style={{
-      width: size, height: size, borderRadius: '50%',
-      background: bg, color: fg,
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      fontSize: size * 0.35, fontWeight: '700', flexShrink: 0,
-      fontFamily: "'Sora', sans-serif",
-    }}>
+    <div style={{ width: size, height: size, borderRadius: '50%', background: bg, color: fg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: size * 0.35, fontWeight: '700', flexShrink: 0, fontFamily: "'Sora', sans-serif" }}>
       {initials(name) || '?'}
     </div>
   );
@@ -107,12 +95,7 @@ function Avatar({ name = '', size = 32, photoUrl = null }) {
 
 function Chip({ children, color, bg, border }) {
   return (
-    <span style={{
-      display: 'inline-flex', alignItems: 'center',
-      padding: '2px 8px', borderRadius: '20px',
-      fontSize: '10px', fontWeight: '700', letterSpacing: '0.03em',
-      color, background: bg, border: `1px solid ${border}`,
-    }}>
+    <span style={{ display: 'inline-flex', alignItems: 'center', padding: '2px 8px', borderRadius: '20px', fontSize: '10px', fontWeight: '700', letterSpacing: '0.03em', color, background: bg, border: `1px solid ${border}` }}>
       {children}
     </span>
   );
@@ -121,34 +104,27 @@ function Chip({ children, color, bg, border }) {
 // ─── TASK DETAIL MODAL ────────────────────────────────────────────────────────
 function TaskDetailModal({ task, profiles, currentUserId, onClose, onStatusChange, onDelete }) {
   if (!task) return null;
-  const assignee = profiles.find(p => p.id === task.assigned_to);
-  const creator  = profiles.find(p => p.id === task.created_by);
-  const overdue  = isOverdue(task.due_date, task.status);
+  const assignee  = profiles.find(p => p.id === task.assigned_to);
+  const creator   = profiles.find(p => p.id === task.created_by);
+  const overdue   = isOverdue(task.due_date, task.status);
   const isCreator  = task.created_by  === currentUserId;
   const isAssigned = task.assigned_to === currentUserId;
   const pCfg = PRIORITY_CONFIG[task.priority] || PRIORITY_CONFIG.medium;
   const sCfg = STATUS_COLS.find(s => s.status === task.status) || STATUS_COLS[0];
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(10,15,30,0.55)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000, padding: 20 }}>
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(10,15,30,0.60)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000, padding: 20 }}>
       <div style={{ background: C.surface, borderRadius: '24px', width: '100%', maxWidth: '620px', maxHeight: '90vh', overflowY: 'auto', border: `1.5px solid ${C.border}`, boxShadow: '0 32px 80px rgba(27,58,107,0.22)' }}>
-        {/* Header stripe */}
         <div style={{ background: `linear-gradient(135deg, ${C.navy} 0%, ${C.blue} 100%)`, borderRadius: '22px 22px 0 0', padding: '28px 28px 24px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <div style={{ flex: 1 }}>
               <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-                <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.5)', fontFamily: 'monospace', fontWeight: '600', letterSpacing: '0.05em' }}>
-                  #{task.id.substring(0, 8).toUpperCase()}
-                </span>
+                <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.5)', fontFamily: 'monospace', fontWeight: '600' }}>#{task.id.substring(0, 8).toUpperCase()}</span>
                 <Chip color={pCfg.color} bg={pCfg.bg} border={pCfg.border}>{pCfg.label}</Chip>
-                <span style={{ fontSize: '10px', padding: '2px 9px', borderRadius: '20px', background: 'rgba(255,255,255,0.12)', color: '#fff', fontWeight: '700' }}>
-                  {sCfg.label}
-                </span>
+                <span style={{ fontSize: '10px', padding: '2px 9px', borderRadius: '20px', background: 'rgba(255,255,255,0.12)', color: '#fff', fontWeight: '700' }}>{sCfg.label}</span>
                 {overdue && <Chip color={C.danger} bg={C.dangerLt} border="#FECACA">Vencida</Chip>}
               </div>
-              <h2 style={{ margin: 0, fontSize: '20px', fontWeight: '800', color: '#fff', lineHeight: '1.3', letterSpacing: '-0.02em' }}>
-                {task.title}
-              </h2>
+              <h2 style={{ margin: 0, fontSize: '20px', fontWeight: '800', color: '#fff', lineHeight: '1.3' }}>{task.title}</h2>
             </div>
             <button onClick={onClose} style={{ background: 'rgba(255,255,255,0.12)', border: 'none', borderRadius: '10px', padding: '8px', cursor: 'pointer', color: '#fff', display: 'flex', marginLeft: 12, flexShrink: 0 }}>
               <X size={16} />
@@ -156,25 +132,20 @@ function TaskDetailModal({ task, profiles, currentUserId, onClose, onStatusChang
           </div>
         </div>
 
-        {/* Body */}
         <div style={{ padding: '28px' }}>
-          {/* Description */}
           <div style={{ marginBottom: 24 }}>
             <h4 style={{ margin: '0 0 10px', fontSize: '11px', fontWeight: '700', color: C.navy, letterSpacing: '0.06em', textTransform: 'uppercase' }}>Descripción</h4>
             {task.description
-              ? <p style={{ margin: 0, fontSize: '14px', color: C.text, lineHeight: '1.75', background: C.bg, padding: '16px', borderRadius: '12px', border: `1px solid ${C.border}` }}>
-                  {task.description}
-                </p>
+              ? <p style={{ margin: 0, fontSize: '14px', color: C.text, lineHeight: '1.75', background: C.bg, padding: '16px', borderRadius: '12px', border: `1px solid ${C.border}` }}>{task.description}</p>
               : <p style={{ margin: 0, fontSize: '13px', color: C.mutedLt, fontStyle: 'italic' }}>Sin descripción</p>
             }
           </div>
 
-          {/* Attachment */}
           {task.file_url && (
             <div style={{ marginBottom: 24 }}>
               <h4 style={{ margin: '0 0 10px', fontSize: '11px', fontWeight: '700', color: C.navy, letterSpacing: '0.06em', textTransform: 'uppercase' }}>Archivo adjunto</h4>
               <a href={task.file_url} target="_blank" rel="noopener noreferrer"
-                style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '10px 16px', borderRadius: '10px', border: `1.5px solid ${C.accentLt}`, background: C.accentLt, color: C.navy, fontSize: '13px', fontWeight: '600', textDecoration: 'none', transition: 'all 0.15s' }}>
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '10px 16px', borderRadius: '10px', border: `1.5px solid ${C.accentLt}`, background: C.accentLt, color: C.navy, fontSize: '13px', fontWeight: '600', textDecoration: 'none' }}>
                 <Paperclip size={14} color={C.accent} />
                 {task.file_name || 'Ver archivo adjunto'}
                 <ExternalLink size={12} color={C.muted} />
@@ -182,7 +153,6 @@ function TaskDetailModal({ task, profiles, currentUserId, onClose, onStatusChang
             </div>
           )}
 
-          {/* Meta grid */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 24 }}>
             {[
               { label: 'Asignado a', content: assignee ? (
@@ -223,7 +193,6 @@ function TaskDetailModal({ task, profiles, currentUserId, onClose, onStatusChang
             ))}
           </div>
 
-          {/* Completion */}
           {task.status === 'completed' && task.completed_at && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 16px', background: C.successLt, borderRadius: '12px', marginBottom: 24, border: `1px solid #BBF7D0` }}>
               <CheckCircle2 size={16} color={C.success} />
@@ -231,10 +200,10 @@ function TaskDetailModal({ task, profiles, currentUserId, onClose, onStatusChang
             </div>
           )}
 
-          {/* Actions */}
           <div style={{ display: 'flex', gap: 10, justifyContent: 'space-between', alignItems: 'center', paddingTop: 16, borderTop: `1px solid ${C.border}` }}>
             <div style={{ display: 'flex', gap: 8 }}>
-              {(isAssigned || isCreator) && task.status !== 'completed' && (
+              {/* Solo el asignado puede iniciar / completar */}
+              {isAssigned && task.status !== 'completed' && (
                 <>
                   {task.status === 'pending' && (
                     <button onClick={() => { onStatusChange(task.id, 'in_progress'); onClose(); }}
@@ -249,6 +218,7 @@ function TaskDetailModal({ task, profiles, currentUserId, onClose, onStatusChang
                 </>
               )}
             </div>
+            {/* Solo el creador puede eliminar */}
             {isCreator && (
               <button onClick={() => { onDelete(task.id); onClose(); }}
                 style={{ padding: '8px 16px', borderRadius: '20px', border: `1.5px solid ${C.dangerLt}`, background: C.dangerLt, color: C.danger, fontSize: '12px', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5 }}>
@@ -264,20 +234,16 @@ function TaskDetailModal({ task, profiles, currentUserId, onClose, onStatusChang
 
 // ─── TICKET CARD ─────────────────────────────────────────────────────────────
 function TicketCard({ task, currentUserId, profiles, onStatusChange, onDelete, onViewDetail }) {
-  const assignee = profiles.find(p => p.id === task.assigned_to);
-  const creator  = profiles.find(p => p.id === task.created_by);
-  const overdue  = isOverdue(task.due_date, task.status);
+  const assignee  = profiles.find(p => p.id === task.assigned_to);
+  const overdue   = isOverdue(task.due_date, task.status);
   const isCreator  = task.created_by  === currentUserId;
   const isAssigned = task.assigned_to === currentUserId;
   const pCfg = PRIORITY_CONFIG[task.priority] || PRIORITY_CONFIG.medium;
 
   return (
     <div style={{
-      background: C.surface,
-      border: `1.5px solid ${overdue ? '#FECACA' : C.border}`,
-      borderLeft: `4px solid ${pCfg.color}`,
-      borderRadius: '14px', padding: '16px',
-      marginBottom: '10px',
+      background: C.surface, border: `1.5px solid ${overdue ? '#FECACA' : C.border}`,
+      borderLeft: `4px solid ${pCfg.color}`, borderRadius: '14px', padding: '16px', marginBottom: '10px',
       boxShadow: overdue ? '0 2px 12px rgba(220,38,38,0.08)' : '0 1px 4px rgba(27,58,107,0.06)',
       transition: 'box-shadow 0.2s, transform 0.15s',
     }}
@@ -287,29 +253,22 @@ function TicketCard({ task, currentUserId, profiles, onStatusChange, onDelete, o
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4, flexWrap: 'wrap' }}>
-            <span style={{ fontSize: '10px', color: C.mutedLt, fontFamily: 'monospace', fontWeight: '600' }}>
-              #{task.id.substring(0, 8).toUpperCase()}
-            </span>
+            <span style={{ fontSize: '10px', color: C.mutedLt, fontFamily: 'monospace', fontWeight: '600' }}>#{task.id.substring(0, 8).toUpperCase()}</span>
             <Chip color={pCfg.color} bg={pCfg.bg} border={pCfg.border}>{pCfg.label}</Chip>
             {overdue && <Chip color={C.danger} bg={C.dangerLt} border="#FECACA">Vencida</Chip>}
             {task.file_url && <Chip color={C.accent} bg={C.accentLt} border="#BFDBFE"><Paperclip size={9} style={{ marginRight: 3 }} />Adjunto</Chip>}
           </div>
-          <h3 style={{ margin: 0, fontSize: '14px', fontWeight: '700', color: C.navy, lineHeight: '1.35' }}>
-            {task.title}
-          </h3>
+          <h3 style={{ margin: 0, fontSize: '14px', fontWeight: '700', color: C.navy, lineHeight: '1.35' }}>{task.title}</h3>
         </div>
         <button onClick={() => onViewDetail(task)}
           style={{ background: C.bg, border: `1px solid ${C.border}`, cursor: 'pointer', color: C.muted, padding: '5px 10px', borderRadius: '8px', flexShrink: 0, marginLeft: 8, fontSize: '11px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: 4 }}
           onMouseEnter={e => { e.currentTarget.style.background = C.accentLt; e.currentTarget.style.color = C.navy; }}
           onMouseLeave={e => { e.currentTarget.style.background = C.bg; e.currentTarget.style.color = C.muted; }}
-        >
-          Ver <ChevronRight size={11} />
-        </button>
+        >Ver <ChevronRight size={11} /></button>
       </div>
 
       {task.description && (
-        <p style={{ margin: '0 0 10px', fontSize: '12px', color: C.muted, lineHeight: '1.55',
-          overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+        <p style={{ margin: '0 0 10px', fontSize: '12px', color: C.muted, lineHeight: '1.55', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
           {task.description}
         </p>
       )}
@@ -329,7 +288,8 @@ function TicketCard({ task, currentUserId, profiles, onStatusChange, onDelete, o
         )}
       </div>
 
-      {(isAssigned || isCreator) && task.status !== 'completed' && (
+      {/* Solo el asignado puede iniciar / completar */}
+      {isAssigned && task.status !== 'completed' && (
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           {task.status === 'pending' && (
             <button onClick={() => onStatusChange(task.id, 'in_progress')}
@@ -344,10 +304,46 @@ function TicketCard({ task, currentUserId, profiles, onStatusChange, onDelete, o
         </div>
       )}
 
+      {/* Solo el creador puede eliminar */}
+      {isCreator && task.status !== 'completed' && !isAssigned && (
+        <div style={{ display: 'flex', gap: 6 }}>
+          <button onClick={() => onDelete(task.id)}
+            style={{ padding: '5px 12px', borderRadius: '20px', border: `1.5px solid ${C.dangerLt}`, background: C.dangerLt, color: C.danger, fontSize: '11px', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
+            <Trash2 size={11} /> Eliminar
+          </button>
+        </div>
+      )}
+      {isCreator && isAssigned && task.status !== 'completed' && (
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          {task.status === 'pending' && (
+            <button onClick={() => onStatusChange(task.id, 'in_progress')}
+              style={{ padding: '5px 12px', borderRadius: '20px', border: `1.5px solid ${C.accentLt}`, background: C.accentLt, color: C.navy, fontSize: '11px', fontWeight: '700', cursor: 'pointer' }}>
+              Iniciar tarea
+            </button>
+          )}
+          <button onClick={() => onStatusChange(task.id, 'completed')}
+            style={{ padding: '5px 12px', borderRadius: '20px', border: `1.5px solid ${C.successLt}`, background: C.successLt, color: C.success, fontSize: '11px', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
+            <CheckCircle2 size={12} /> Marcar realizado
+          </button>
+          <button onClick={() => onDelete(task.id)}
+            style={{ padding: '5px 12px', borderRadius: '20px', border: `1.5px solid ${C.dangerLt}`, background: C.dangerLt, color: C.danger, fontSize: '11px', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
+            <Trash2 size={11} /> Eliminar
+          </button>
+        </div>
+      )}
+
       {task.status === 'completed' && task.completed_at && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 5, color: C.success, fontSize: '11px', fontWeight: '600' }}>
-          <CheckCircle2 size={13} />
-          Completado el {formatDate(task.completed_at)}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5, color: C.success, fontSize: '11px', fontWeight: '600' }}>
+            <CheckCircle2 size={13} />
+            Completado el {formatDate(task.completed_at)}
+          </div>
+          {isCreator && (
+            <button onClick={() => onDelete(task.id)}
+              style={{ padding: '4px 10px', borderRadius: '20px', border: `1.5px solid ${C.dangerLt}`, background: C.dangerLt, color: C.danger, fontSize: '10px', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 3 }}>
+              <Trash2 size={10} /> Eliminar
+            </button>
+          )}
         </div>
       )}
     </div>
@@ -356,9 +352,7 @@ function TicketCard({ task, currentUserId, profiles, onStatusChange, onDelete, o
 
 // ─── NEW TASK MODAL ───────────────────────────────────────────────────────────
 function NewTaskModal({ profiles, currentUserId, onClose, onCreated, preAssignTo = null }) {
-  const [form, setForm] = useState({
-    title: '', description: '', assigned_to: preAssignTo || '', priority: 'medium', due_date: ''
-  });
+  const [form, setForm] = useState({ title: '', description: '', assigned_to: preAssignTo || '', priority: 'medium', due_date: '' });
   const [file, setFile]       = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState('');
@@ -368,10 +362,7 @@ function NewTaskModal({ profiles, currentUserId, onClose, onCreated, preAssignTo
   const handleFileChange = (e) => {
     const f = e.target.files[0];
     if (f) {
-      const allowed = ['application/pdf',
-        'application/vnd.ms-excel',
-        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        'text/csv'];
+      const allowed = ['application/pdf','application/vnd.ms-excel','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','text/csv'];
       if (!allowed.includes(f.type)) { setError('Solo se permiten archivos PDF, Excel o CSV.'); return; }
       if (f.size > 10 * 1024 * 1024) { setError('El archivo no puede superar 10 MB.'); return; }
       setFile(f); setError('');
@@ -383,68 +374,47 @@ function NewTaskModal({ profiles, currentUserId, onClose, onCreated, preAssignTo
     if (!form.title.trim()) return setError('El título es obligatorio.');
     if (!form.assigned_to)  return setError('Debes asignar la tarea a alguien.');
     setLoading(true); setError('');
-
-    let fileUrl = null;
-    let fileName = null;
-
+    let fileUrl = null, fileName = null;
     if (file) {
       const ext = file.name.split('.').pop();
       const path = `tasks/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
       const { error: upErr } = await supabase.storage.from('task-files').upload(path, file);
       if (upErr) { setLoading(false); return setError('Error subiendo archivo: ' + upErr.message); }
       const { data: urlData } = supabase.storage.from('task-files').getPublicUrl(path);
-      fileUrl = urlData.publicUrl;
-      fileName = file.name;
+      fileUrl = urlData.publicUrl; fileName = file.name;
     }
-
     const { data, error: err } = await supabase.from('tasks').insert([{
       title: form.title.trim(), description: form.description.trim() || null,
       assigned_to: form.assigned_to, priority: form.priority,
       due_date: form.due_date || null, created_by: currentUserId, status: 'pending',
       file_url: fileUrl, file_name: fileName,
     }]).select().single();
-
     setLoading(false);
     if (err) return setError(err.message);
     onCreated(data); onClose();
   };
 
-  const sel = {
-    width: '100%', height: '44px', padding: '0 14px',
-    borderRadius: '10px', border: `1.5px solid ${C.border}`,
-    background: C.surface, color: C.text, fontSize: '14px',
-    outline: 'none', boxSizing: 'border-box', appearance: 'none', cursor: 'pointer', fontFamily: 'inherit',
-  };
-  const inp = {
-    width: '100%', height: '44px', padding: '0 14px',
-    borderRadius: '10px', border: `1.5px solid ${C.border}`,
-    background: C.surface, color: C.text, fontSize: '14px',
-    outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit',
-  };
+  const sel = { width: '100%', height: '44px', padding: '0 14px', borderRadius: '10px', border: `1.5px solid ${C.border}`, background: C.surface, color: C.text, fontSize: '14px', outline: 'none', boxSizing: 'border-box', appearance: 'none', cursor: 'pointer', fontFamily: 'inherit' };
+  const inp = { width: '100%', height: '44px', padding: '0 14px', borderRadius: '10px', border: `1.5px solid ${C.border}`, background: C.surface, color: C.text, fontSize: '14px', outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit' };
   const lbl = { display: 'block', fontSize: '11px', fontWeight: '700', color: C.navy, marginBottom: 6, letterSpacing: '0.05em', textTransform: 'uppercase' };
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(10,15,30,0.55)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 16 }}>
-      <div style={{ background: C.surface, borderRadius: '24px', padding: '0', width: '100%', maxWidth: '540px', maxHeight: '92vh', overflowY: 'auto', border: `1.5px solid ${C.border}`, boxShadow: '0 32px 80px rgba(27,58,107,0.22)' }}>
-        {/* Header */}
+      <div style={{ background: C.surface, borderRadius: '24px', width: '100%', maxWidth: '540px', maxHeight: '92vh', overflowY: 'auto', border: `1.5px solid ${C.border}`, boxShadow: '0 32px 80px rgba(27,58,107,0.22)' }}>
         <div style={{ background: `linear-gradient(135deg, ${C.navy} 0%, ${C.blue} 100%)`, borderRadius: '22px 22px 0 0', padding: '24px 28px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
-            <h2 style={{ margin: 0, fontSize: '18px', fontWeight: '800', color: '#fff', letterSpacing: '-0.02em' }}>Crear Ticket</h2>
+            <h2 style={{ margin: 0, fontSize: '18px', fontWeight: '800', color: '#fff' }}>Crear Ticket</h2>
             <p style={{ margin: '3px 0 0', fontSize: '12px', color: 'rgba(255,255,255,0.6)' }}>Asigna y define los detalles de la tarea</p>
           </div>
-          <button onClick={onClose} style={{ background: 'rgba(255,255,255,0.12)', border: 'none', borderRadius: '10px', padding: '8px', cursor: 'pointer', color: '#fff', display: 'flex' }}>
-            <X size={16} />
-          </button>
+          <button onClick={onClose} style={{ background: 'rgba(255,255,255,0.12)', border: 'none', borderRadius: '10px', padding: '8px', cursor: 'pointer', color: '#fff', display: 'flex' }}><X size={16} /></button>
         </div>
-
         <div style={{ padding: '28px' }}>
           <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             <div>
               <label style={lbl}>Título *</label>
               <input style={inp} value={form.title} onChange={e => set('title', e.target.value)} placeholder="Ej: Diseñar pantalla de login" required
                 onFocus={e => { e.target.style.borderColor = C.blue; e.target.style.boxShadow = `0 0 0 3px ${C.accentLt}`; }}
-                onBlur={e => { e.target.style.borderColor = C.border; e.target.style.boxShadow = 'none'; }}
-              />
+                onBlur={e => { e.target.style.borderColor = C.border; e.target.style.boxShadow = 'none'; }} />
             </div>
             <div>
               <label style={lbl}>Descripción</label>
@@ -452,16 +422,13 @@ function NewTaskModal({ profiles, currentUserId, onClose, onCreated, preAssignTo
                 placeholder="Detalla los criterios de aceptación, contexto y resultados esperados..." rows={4}
                 style={{ ...inp, height: 'auto', padding: '12px 14px', resize: 'vertical', lineHeight: '1.6' }}
                 onFocus={e => { e.target.style.borderColor = C.blue; e.target.style.boxShadow = `0 0 0 3px ${C.accentLt}`; }}
-                onBlur={e => { e.target.style.borderColor = C.border; e.target.style.boxShadow = 'none'; }}
-              />
+                onBlur={e => { e.target.style.borderColor = C.border; e.target.style.boxShadow = 'none'; }} />
             </div>
             <div>
               <label style={lbl}>Asignar a *</label>
               <select value={form.assigned_to} onChange={e => set('assigned_to', e.target.value)} required style={sel}>
                 <option value="">— Selecciona un miembro —</option>
-                {profiles.map(p => (
-                  <option key={p.id} value={p.id}>{p.full_name} · {p.cargo}</option>
-                ))}
+                {profiles.map(p => <option key={p.id} value={p.id}>{p.full_name} · {p.cargo}</option>)}
               </select>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
@@ -475,24 +442,15 @@ function NewTaskModal({ profiles, currentUserId, onClose, onCreated, preAssignTo
                 <label style={lbl}>Fecha límite</label>
                 <input type="datetime-local" value={form.due_date} onChange={e => set('due_date', e.target.value)} style={inp}
                   onFocus={e => { e.target.style.borderColor = C.blue; e.target.style.boxShadow = `0 0 0 3px ${C.accentLt}`; }}
-                  onBlur={e => { e.target.style.borderColor = C.border; e.target.style.boxShadow = 'none'; }}
-                />
+                  onBlur={e => { e.target.style.borderColor = C.border; e.target.style.boxShadow = 'none'; }} />
               </div>
             </div>
-
-            {/* File upload */}
             <div>
               <label style={lbl}>Adjuntar archivo <span style={{ textTransform: 'none', fontWeight: '400', color: C.muted, letterSpacing: 0 }}>(PDF, Excel, CSV · máx. 10 MB)</span></label>
-              <div
-                onClick={() => fileRef.current?.click()}
-                style={{
-                  border: `2px dashed ${file ? C.blue : C.border}`, borderRadius: '12px',
-                  padding: '20px', textAlign: 'center', cursor: 'pointer',
-                  background: file ? C.accentLt : C.bg, transition: 'all 0.2s',
-                }}
+              <div onClick={() => fileRef.current?.click()}
+                style={{ border: `2px dashed ${file ? C.blue : C.border}`, borderRadius: '12px', padding: '20px', textAlign: 'center', cursor: 'pointer', background: file ? C.accentLt : C.bg, transition: 'all 0.2s' }}
                 onMouseEnter={e => { if (!file) { e.currentTarget.style.borderColor = C.accent; e.currentTarget.style.background = C.accentLt; } }}
-                onMouseLeave={e => { if (!file) { e.currentTarget.style.borderColor = C.border; e.currentTarget.style.background = C.bg; } }}
-              >
+                onMouseLeave={e => { if (!file) { e.currentTarget.style.borderColor = C.border; e.currentTarget.style.background = C.bg; } }}>
                 <input ref={fileRef} type="file" accept=".pdf,.xlsx,.xls,.csv" onChange={handleFileChange} style={{ display: 'none' }} />
                 {file ? (
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
@@ -502,9 +460,7 @@ function NewTaskModal({ profiles, currentUserId, onClose, onCreated, preAssignTo
                       <div style={{ fontSize: '11px', color: C.muted }}>{(file.size / 1024).toFixed(1)} KB</div>
                     </div>
                     <button type="button" onClick={(e) => { e.stopPropagation(); setFile(null); }}
-                      style={{ background: C.dangerLt, border: 'none', borderRadius: '6px', padding: '4px', cursor: 'pointer', color: C.danger, display: 'flex', marginLeft: 8 }}>
-                      <X size={12} />
-                    </button>
+                      style={{ background: C.dangerLt, border: 'none', borderRadius: '6px', padding: '4px', cursor: 'pointer', color: C.danger, display: 'flex', marginLeft: 8 }}><X size={12} /></button>
                   </div>
                 ) : (
                   <div>
@@ -515,25 +471,10 @@ function NewTaskModal({ profiles, currentUserId, onClose, onCreated, preAssignTo
                 )}
               </div>
             </div>
-
-            {error && (
-              <div style={{ padding: '10px 14px', background: C.dangerLt, border: `1.5px solid #FECACA`, borderRadius: '10px', color: C.danger, fontSize: '12px', fontWeight: '600' }}>
-                {error}
-              </div>
-            )}
-
+            {error && <div style={{ padding: '10px 14px', background: C.dangerLt, border: `1.5px solid #FECACA`, borderRadius: '10px', color: C.danger, fontSize: '12px', fontWeight: '600' }}>{error}</div>}
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 4, paddingTop: 16, borderTop: `1px solid ${C.border}` }}>
-              <button type="button" onClick={onClose} style={{ padding: '10px 20px', borderRadius: '20px', border: `1.5px solid ${C.border}`, background: 'transparent', color: C.muted, fontSize: '13px', fontWeight: '600', cursor: 'pointer' }}>
-                Cancelar
-              </button>
-              <button type="submit" disabled={loading} style={{
-                padding: '10px 24px', borderRadius: '20px', border: 'none',
-                background: `linear-gradient(135deg, ${C.navy} 0%, ${C.blue} 100%)`,
-                color: '#fff', fontSize: '13px', fontWeight: '700',
-                cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.75 : 1,
-                display: 'flex', alignItems: 'center', gap: 7,
-                boxShadow: '0 4px 14px rgba(37,99,235,0.30)',
-              }}>
+              <button type="button" onClick={onClose} style={{ padding: '10px 20px', borderRadius: '20px', border: `1.5px solid ${C.border}`, background: 'transparent', color: C.muted, fontSize: '13px', fontWeight: '600', cursor: 'pointer' }}>Cancelar</button>
+              <button type="submit" disabled={loading} style={{ padding: '10px 24px', borderRadius: '20px', border: 'none', background: `linear-gradient(135deg, ${C.navy} 0%, ${C.blue} 100%)`, color: '#fff', fontSize: '13px', fontWeight: '700', cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.75 : 1, display: 'flex', alignItems: 'center', gap: 7, boxShadow: '0 4px 14px rgba(37,99,235,0.30)' }}>
                 {loading ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <Send size={14} />}
                 {loading ? 'Creando...' : 'Crear Ticket'}
               </button>
@@ -545,20 +486,12 @@ function NewTaskModal({ profiles, currentUserId, onClose, onCreated, preAssignTo
   );
 }
 
-// ─── STAT CARD ───────────────────────────────────────────────────────────────
+// ─── STAT CARD ────────────────────────────────────────────────────────────────
 function StatCard({ icon: Icon, label, value, iconColor, iconBg, accent }) {
   return (
-    <div style={{
-      background: C.surface, border: `1.5px solid ${C.border}`,
-      borderRadius: '16px', padding: '20px 20px 18px',
-      display: 'flex', alignItems: 'center', gap: '14px',
-      boxShadow: '0 1px 4px rgba(27,58,107,0.06)',
-      borderTop: `3px solid ${accent}`,
-      transition: 'box-shadow 0.2s, transform 0.15s',
-    }}
-    onMouseEnter={e => { e.currentTarget.style.boxShadow = '0 4px 16px rgba(27,58,107,0.12)'; e.currentTarget.style.transform = 'translateY(-2px)'; }}
-    onMouseLeave={e => { e.currentTarget.style.boxShadow = '0 1px 4px rgba(27,58,107,0.06)'; e.currentTarget.style.transform = 'translateY(0)'; }}
-    >
+    <div style={{ background: C.surface, border: `1.5px solid ${C.border}`, borderRadius: '16px', padding: '20px 20px 18px', display: 'flex', alignItems: 'center', gap: '14px', boxShadow: '0 1px 4px rgba(27,58,107,0.06)', borderTop: `3px solid ${accent}`, transition: 'box-shadow 0.2s, transform 0.15s' }}
+      onMouseEnter={e => { e.currentTarget.style.boxShadow = '0 4px 16px rgba(27,58,107,0.12)'; e.currentTarget.style.transform = 'translateY(-2px)'; }}
+      onMouseLeave={e => { e.currentTarget.style.boxShadow = '0 1px 4px rgba(27,58,107,0.06)'; e.currentTarget.style.transform = 'translateY(0)'; }}>
       <div style={{ width: 46, height: 46, borderRadius: '13px', background: iconBg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
         <Icon size={20} color={iconColor} />
       </div>
@@ -570,9 +503,141 @@ function StatCard({ icon: Icon, label, value, iconColor, iconBg, accent }) {
   );
 }
 
-// ─── TEAM MEMBERS VIEW ────────────────────────────────────────────────────────
-function TeamView({ profiles, currentUserId, onAssignTask }) {
-  const [editingPhoto, setEditingPhoto] = useState(null);
+// ─── ANALYTICS DASHBOARD ─────────────────────────────────────────────────────
+function AnalyticsDashboard({ tasks, profiles, currentUserId }) {
+  // Group completed tasks by week (last 8 weeks)
+  const now = new Date();
+  const weeks = Array.from({ length: 8 }, (_, i) => {
+    const start = new Date(now);
+    start.setDate(now.getDate() - (7 * (7 - i)));
+    const end = new Date(start); end.setDate(start.getDate() + 7);
+    return { start, end, label: `S${i + 1}` };
+  });
+
+  const completedByWeek = weeks.map(w =>
+    tasks.filter(t => t.status === 'completed' && t.completed_at && new Date(t.completed_at) >= w.start && new Date(t.completed_at) < w.end).length
+  );
+  const assignedByWeek = weeks.map(w =>
+    tasks.filter(t => t.created_at && new Date(t.created_at) >= w.start && new Date(t.created_at) < w.end).length
+  );
+  const overdueByWeek = weeks.map(w =>
+    tasks.filter(t => t.due_date && new Date(t.due_date) >= w.start && new Date(t.due_date) < w.end && t.status !== 'completed').length
+  );
+
+  const maxVal = Math.max(...completedByWeek, ...assignedByWeek, ...overdueByWeek, 1);
+  const BAR_H = 120;
+
+  const totalCompleted = tasks.filter(t => t.status === 'completed').length;
+  const totalAssigned  = tasks.length;
+  const totalOverdue   = tasks.filter(t => isOverdue(t.due_date, t.status)).length;
+  const completionRate = totalAssigned > 0 ? Math.round((totalCompleted / totalAssigned) * 100) : 0;
+
+  // By priority breakdown
+  const byPriority = Object.entries(PRIORITY_CONFIG).map(([key, cfg]) => ({
+    key, cfg,
+    count: tasks.filter(t => t.priority === key).length,
+    done:  tasks.filter(t => t.priority === key && t.status === 'completed').length,
+  }));
+
+  const barSeries = [
+    { label: 'Asignadas', data: assignedByWeek, color: C.accent },
+    { label: 'Completadas', data: completedByWeek, color: C.success },
+    { label: 'Vencidas', data: overdueByWeek, color: C.danger },
+  ];
+
+  return (
+    <div style={{ animation: 'fadeUp 0.4s ease-out' }}>
+      <div style={{ marginBottom: 28 }}>
+        <h2 style={{ margin: '0 0 4px', fontSize: '22px', fontWeight: '800', color: C.navy }}>Panel de Analítica</h2>
+        <p style={{ margin: 0, fontSize: '13px', color: C.muted }}>Evolución de tareas en las últimas 8 semanas</p>
+      </div>
+
+      {/* KPI row */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 24 }}>
+        {[
+          { icon: Target,      label: 'Total tareas',   value: totalAssigned,   accent: C.accent,  iconBg: C.accentLt,  iconColor: C.accent  },
+          { icon: CheckCircle2,label: 'Completadas',    value: totalCompleted,  accent: C.success, iconBg: C.successLt, iconColor: C.success },
+          { icon: AlertCircle, label: 'Vencidas',       value: totalOverdue,    accent: C.danger,  iconBg: C.dangerLt,  iconColor: C.danger  },
+          { icon: TrendingUp,  label: 'Tasa cumplim.', value: `${completionRate}%`, accent: C.violet, iconBg: C.violetLt, iconColor: C.violet },
+        ].map(({ icon: Ic, label, value, accent, iconBg, iconColor }) => (
+          <div key={label} style={{ background: C.surface, border: `1.5px solid ${C.border}`, borderRadius: '16px', padding: '18px', display: 'flex', alignItems: 'center', gap: 12, boxShadow: '0 1px 4px rgba(27,58,107,0.06)', borderTop: `3px solid ${accent}` }}>
+            <div style={{ width: 40, height: 40, borderRadius: '12px', background: iconBg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <Ic size={18} color={iconColor} />
+            </div>
+            <div>
+              <div style={{ fontSize: '24px', fontWeight: '800', color: C.navy, letterSpacing: '-0.02em', lineHeight: 1 }}>{value}</div>
+              <div style={{ fontSize: '11px', color: C.muted, marginTop: 2, fontWeight: '500' }}>{label}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 20 }}>
+        {/* Bar chart */}
+        <div style={{ background: C.surface, border: `1.5px solid ${C.border}`, borderRadius: '20px', padding: '24px', boxShadow: '0 1px 4px rgba(27,58,107,0.06)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+            <div>
+              <h3 style={{ margin: 0, fontSize: '14px', fontWeight: '800', color: C.navy }}>Evolución semanal</h3>
+              <p style={{ margin: '2px 0 0', fontSize: '11px', color: C.muted }}>Últimas 8 semanas</p>
+            </div>
+            <div style={{ display: 'flex', gap: 14 }}>
+              {barSeries.map(s => (
+                <div key={s.label} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                  <div style={{ width: 10, height: 10, borderRadius: '3px', background: s.color }} />
+                  <span style={{ fontSize: '11px', color: C.muted, fontWeight: '600' }}>{s.label}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, height: BAR_H + 24 }}>
+            {weeks.map((w, wi) => (
+              <div key={wi} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
+                <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2, height: BAR_H }}>
+                  {barSeries.map(s => {
+                    const h = Math.round((s.data[wi] / maxVal) * BAR_H);
+                    return (
+                      <div key={s.label} title={`${s.label}: ${s.data[wi]}`}
+                        style={{ width: 10, height: Math.max(h, 2), background: s.color, borderRadius: '3px 3px 0 0', transition: 'height 0.3s', opacity: 0.85 }} />
+                    );
+                  })}
+                </div>
+                <span style={{ fontSize: '9px', color: C.mutedLt, fontWeight: '600' }}>{w.label}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Priority breakdown */}
+        <div style={{ background: C.surface, border: `1.5px solid ${C.border}`, borderRadius: '20px', padding: '24px', boxShadow: '0 1px 4px rgba(27,58,107,0.06)' }}>
+          <h3 style={{ margin: '0 0 4px', fontSize: '14px', fontWeight: '800', color: C.navy }}>Por prioridad</h3>
+          <p style={{ margin: '0 0 20px', fontSize: '11px', color: C.muted }}>Cumplimiento por nivel</p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            {byPriority.map(({ key, cfg, count, done }) => {
+              const pct = count > 0 ? Math.round((done / count) * 100) : 0;
+              return (
+                <div key={key}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <div style={{ width: 8, height: 8, borderRadius: '50%', background: cfg.color }} />
+                      <span style={{ fontSize: '12px', fontWeight: '700', color: C.navy }}>{cfg.label}</span>
+                    </div>
+                    <span style={{ fontSize: '11px', color: C.muted }}>{done}/{count} · {pct}%</span>
+                  </div>
+                  <div style={{ height: 7, background: C.bg, borderRadius: '10px', overflow: 'hidden', border: `1px solid ${C.border}` }}>
+                    <div style={{ height: '100%', width: `${pct}%`, background: cfg.color, borderRadius: '10px', transition: 'width 0.5s' }} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── TEAM VIEW ────────────────────────────────────────────────────────────────
+function TeamView({ profiles, tasks, currentUserId, onAssignTask }) {
   const fileRef = useRef();
 
   const handlePhotoUpload = async (profileId, file) => {
@@ -583,81 +648,59 @@ function TeamView({ profiles, currentUserId, onAssignTask }) {
     if (upErr) { alert('Error subiendo foto: ' + upErr.message); return; }
     const { data: urlData } = supabase.storage.from('avatars').getPublicUrl(path);
     await supabase.from('profiles').update({ avatar_url: urlData.publicUrl }).eq('id', profileId);
-    setEditingPhoto(null);
     window.location.reload();
   };
 
   return (
     <div>
       <div style={{ marginBottom: 28 }}>
-        <h2 style={{ margin: '0 0 4px', fontSize: '22px', fontWeight: '800', color: C.navy, letterSpacing: '-0.02em' }}>Miembros del equipo</h2>
-        <p style={{ margin: 0, fontSize: '13px', color: C.muted }}>{profiles.length} colaboradores activos en el workspace</p>
+        <h2 style={{ margin: '0 0 4px', fontSize: '22px', fontWeight: '800', color: C.navy }}>Miembros del equipo</h2>
+        <p style={{ margin: 0, fontSize: '13px', color: C.muted }}>{profiles.length} colaboradores activos</p>
       </div>
-
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 16 }}>
         {profiles.map(profile => {
           const isMe = profile.id === currentUserId;
+          const received  = tasks.filter(t => t.assigned_to === profile.id).length;
+          const completed = tasks.filter(t => t.assigned_to === profile.id && t.status === 'completed').length;
+          const pct = received > 0 ? Math.round((completed / received) * 100) : 0;
           return (
-            <div key={profile.id} style={{
-              background: C.surface, border: `1.5px solid ${C.border}`, borderRadius: '20px',
-              padding: '28px 20px 20px', textAlign: 'center',
-              boxShadow: '0 1px 4px rgba(27,58,107,0.06)',
-              transition: 'box-shadow 0.2s, transform 0.15s',
-              position: 'relative',
-            }}
-            onMouseEnter={e => { e.currentTarget.style.boxShadow = '0 6px 24px rgba(27,58,107,0.12)'; e.currentTarget.style.transform = 'translateY(-2px)'; }}
-            onMouseLeave={e => { e.currentTarget.style.boxShadow = '0 1px 4px rgba(27,58,107,0.06)'; e.currentTarget.style.transform = 'translateY(0)'; }}
-            >
+            <div key={profile.id} style={{ background: C.surface, border: `1.5px solid ${C.border}`, borderRadius: '20px', padding: '28px 20px 20px', textAlign: 'center', boxShadow: '0 1px 4px rgba(27,58,107,0.06)', transition: 'box-shadow 0.2s, transform 0.15s', position: 'relative' }}
+              onMouseEnter={e => { e.currentTarget.style.boxShadow = '0 6px 24px rgba(27,58,107,0.12)'; e.currentTarget.style.transform = 'translateY(-2px)'; }}
+              onMouseLeave={e => { e.currentTarget.style.boxShadow = '0 1px 4px rgba(27,58,107,0.06)'; e.currentTarget.style.transform = 'translateY(0)'; }}>
               {isMe && (
                 <div style={{ position: 'absolute', top: 12, right: 12 }}>
-                  <span style={{ fontSize: '9px', fontWeight: '700', background: C.accentLt, color: C.navy, padding: '2px 7px', borderRadius: '10px', letterSpacing: '0.05em' }}>TÚ</span>
+                  <span style={{ fontSize: '9px', fontWeight: '700', background: C.accentLt, color: C.navy, padding: '2px 7px', borderRadius: '10px' }}>TÚ</span>
                 </div>
               )}
-
-              {/* Avatar with photo upload option for self */}
-              <div style={{ position: 'relative', display: 'inline-block', marginBottom: 14 }}>
+              <div style={{ position: 'relative', display: 'inline-block', marginBottom: 12 }}>
                 <Avatar name={profile.full_name} size={72} photoUrl={profile.avatar_url} />
                 {isMe && (
-                  <button
-                    onClick={() => { setEditingPhoto(profile.id); fileRef.current?.click(); }}
-                    style={{
-                      position: 'absolute', bottom: 0, right: 0,
-                      width: 24, height: 24, borderRadius: '50%',
-                      background: C.navy, border: '2px solid #fff',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      cursor: 'pointer',
-                    }}
-                  >
+                  <button onClick={() => fileRef.current?.click()}
+                    style={{ position: 'absolute', bottom: 0, right: 0, width: 24, height: 24, borderRadius: '50%', background: C.navy, border: '2px solid #fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
                     <Camera size={11} color="#fff" />
                   </button>
                 )}
               </div>
+              {isMe && <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={e => handlePhotoUpload(currentUserId, e.target.files[0])} />}
+              <div style={{ fontSize: '15px', fontWeight: '800', color: C.navy, marginBottom: 3 }}>{profile.full_name}</div>
+              <div style={{ fontSize: '11px', color: C.muted, marginBottom: 10, padding: '3px 10px', background: C.bg, borderRadius: '20px', display: 'inline-block', border: `1px solid ${C.border}` }}>{profile.cargo || 'Colaborador'}</div>
 
-              {isMe && (
-                <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }}
-                  onChange={e => handlePhotoUpload(currentUserId, e.target.files[0])} />
-              )}
-
-              <div style={{ fontSize: '15px', fontWeight: '800', color: C.navy, marginBottom: 4, letterSpacing: '-0.01em' }}>
-                {profile.full_name}
+              {/* Completion rate */}
+              <div style={{ marginBottom: 14, padding: '10px 12px', background: C.bg, borderRadius: '12px', border: `1px solid ${C.border}` }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                  <span style={{ fontSize: '10px', fontWeight: '700', color: C.muted, letterSpacing: '0.04em', textTransform: 'uppercase' }}>Cumplimiento</span>
+                  <span style={{ fontSize: '11px', fontWeight: '800', color: pct >= 70 ? C.success : pct >= 40 ? C.warn : C.danger }}>{pct}%</span>
+                </div>
+                <div style={{ height: 6, background: C.border, borderRadius: '10px', overflow: 'hidden' }}>
+                  <div style={{ height: '100%', width: `${pct}%`, background: pct >= 70 ? C.success : pct >= 40 ? C.warn : C.danger, borderRadius: '10px', transition: 'width 0.5s' }} />
+                </div>
+                <div style={{ fontSize: '10px', color: C.mutedLt, marginTop: 5 }}>{completed} completadas de {received} recibidas</div>
               </div>
-              <div style={{ fontSize: '11px', color: C.muted, marginBottom: 16, padding: '3px 10px', background: C.bg, borderRadius: '20px', display: 'inline-block', border: `1px solid ${C.border}` }}>
-                {profile.cargo || 'Colaborador'}
-              </div>
 
-              <button
-                onClick={() => onAssignTask(profile.id)}
-                style={{
-                  width: '100%', padding: '8px 0', borderRadius: '12px',
-                  border: 'none', background: `linear-gradient(135deg, ${C.navy} 0%, ${C.blue} 100%)`,
-                  color: '#fff', fontSize: '12px', fontWeight: '700', cursor: 'pointer',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-                  boxShadow: '0 3px 10px rgba(37,99,235,0.25)',
-                  transition: 'opacity 0.15s',
-                }}
+              <button onClick={() => onAssignTask(profile.id)}
+                style={{ width: '100%', padding: '8px 0', borderRadius: '12px', border: 'none', background: `linear-gradient(135deg, ${C.navy} 0%, ${C.blue} 100%)`, color: '#fff', fontSize: '12px', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, boxShadow: '0 3px 10px rgba(37,99,235,0.25)', transition: 'opacity 0.15s' }}
                 onMouseEnter={e => e.currentTarget.style.opacity = '0.85'}
-                onMouseLeave={e => e.currentTarget.style.opacity = '1'}
-              >
+                onMouseLeave={e => e.currentTarget.style.opacity = '1'}>
                 <Plus size={13} /> Asignar tarea
               </button>
             </div>
@@ -678,29 +721,29 @@ export default function App() {
   const [showNotifs,    setShowNotifs]    = useState(false);
   const [showNewTask,   setShowNewTask]   = useState(false);
   const [preAssignTo,   setPreAssignTo]   = useState(null);
-  const [activeTab,     setActiveTab]     = useState('all');
+  const [activeTab,     setActiveTab]     = useState('mine');
   const [authLoading,   setAuthLoading]   = useState(true);
   const [selectedTask,  setSelectedTask]  = useState(null);
   const [logoUrl,       setLogoUrl]       = useState(null);
   const logoFileRef = useRef();
 
   // Auth form
-  const [authMode,     setAuthMode]     = useState('login'); // 'login' | 'signup'
-  const [firstName,    setFirstName]    = useState('');
-  const [lastName,     setLastName]     = useState('');
-  const [cargo,        setCargo]        = useState('');
-  const [email,        setEmail]        = useState('');
-  const [password,     setPassword]     = useState('');
-  const [showPass,     setShowPass]     = useState(false);
-  const [formLoading,  setFormLoading]  = useState(false);
-  const [authError,    setAuthError]    = useState(null);
-  const [successMsg,   setSuccessMsg]   = useState(null);
-  const [fieldErrors,  setFieldErrors]  = useState({});
+  const [authMode,    setAuthMode]    = useState('login');
+  const [username,    setUsername]    = useState('');
+  const [firstName,   setFirstName]   = useState('');
+  const [lastName,    setLastName]    = useState('');
+  const [cargo,       setCargo]       = useState('');
+  const [loginEmail,  setLoginEmail]  = useState('');
+  const [password,    setPassword]    = useState('');
+  const [showPass,    setShowPass]    = useState(false);
+  const [formLoading, setFormLoading] = useState(false);
+  const [authError,   setAuthError]   = useState(null);
+  const [successMsg,  setSuccessMsg]  = useState(null);
+  const [fieldErrors, setFieldErrors] = useState({});
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session: s } }) => { setSession(s); setAuthLoading(false); });
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, s) => { setSession(s); setAuthLoading(false); });
-    // Load saved logo from localStorage
     const saved = localStorage.getItem('hanter_logo');
     if (saved) setLogoUrl(saved);
     return () => subscription.unsubscribe();
@@ -711,31 +754,16 @@ export default function App() {
     loadProfile(); loadProfiles(); loadTasks(); loadNotifications();
     const notifSub = supabase.channel('notifs_' + session.user.id)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${session.user.id}` },
-        payload => setNotifications(prev => [payload.new, ...prev]))
-      .subscribe();
+        payload => setNotifications(prev => [payload.new, ...prev])).subscribe();
     const taskSub = supabase.channel('tasks_global')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, () => loadTasks())
-      .subscribe();
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, () => loadTasks()).subscribe();
     return () => { supabase.removeChannel(notifSub); supabase.removeChannel(taskSub); };
   }, [session]);
 
-  const loadProfile = async () => {
-    const { data } = await supabase.from('profiles').select('*').eq('id', session.user.id).single();
-    if (data) setProfile(data);
-  };
-  const loadProfiles = async () => {
-    const { data } = await supabase.from('profiles').select('*');
-    if (data) setProfiles(data);
-  };
-  const loadTasks = async () => {
-    const { data } = await supabase.from('tasks').select('*').order('created_at', { ascending: false });
-    if (data) setTasks(data);
-  };
-  const loadNotifications = async () => {
-    const { data } = await supabase.from('notifications').select('*')
-      .eq('user_id', session.user.id).order('created_at', { ascending: false }).limit(25);
-    if (data) setNotifications(data);
-  };
+  const loadProfile       = async () => { const { data } = await supabase.from('profiles').select('*').eq('id', session.user.id).single(); if (data) setProfile(data); };
+  const loadProfiles      = async () => { const { data } = await supabase.from('profiles').select('*'); if (data) setProfiles(data); };
+  const loadTasks         = async () => { const { data } = await supabase.from('tasks').select('*').order('created_at', { ascending: false }); if (data) setTasks(data); };
+  const loadNotifications = async () => { const { data } = await supabase.from('notifications').select('*').eq('user_id', session.user.id).order('created_at', { ascending: false }).limit(25); if (data) setNotifications(data); };
 
   const handleStatusChange = async (taskId, newStatus) => {
     const upd = { status: newStatus };
@@ -752,25 +780,26 @@ export default function App() {
     await supabase.from('notifications').update({ read: true }).eq('user_id', session.user.id).eq('read', false);
     setNotifications(prev => prev.map(n => ({ ...n, read: true })));
   };
-
   const handleLogoUpload = (e) => {
-    const f = e.target.files[0];
-    if (!f) return;
+    const f = e.target.files[0]; if (!f) return;
     const reader = new FileReader();
     reader.onload = (ev) => { setLogoUrl(ev.target.result); localStorage.setItem('hanter_logo', ev.target.result); };
     reader.readAsDataURL(f);
   };
 
-  // Auth
+  // ── AUTH ──────────────────────────────────────────────────────────────────
   const validate = () => {
     const e = {};
     if (authMode === 'signup') {
-      if (!firstName.trim()) e.firstName = 'Ingresa tu nombre';
-      if (!lastName.trim())  e.lastName  = 'Ingresa tu apellido';
-      if (!cargo.trim())     e.cargo     = 'Ingresa tu cargo';
+      if (!username.trim())   e.username  = 'Ingresa tu usuario';
+      if (!firstName.trim())  e.firstName = 'Ingresa tu nombre';
+      if (!lastName.trim())   e.lastName  = 'Ingresa tu apellido';
+      if (!cargo.trim())      e.cargo     = 'Ingresa tu cargo';
+      if (password.length < 6) e.password = 'Mínimo 6 caracteres';
+    } else {
+      if (!loginEmail.trim()) e.loginEmail = 'El correo es obligatorio';
+      if (password.length < 6) e.password = 'Mínimo 6 caracteres';
     }
-    if (!email.trim())       e.email    = 'El correo es obligatorio';
-    if (password.length < 6) e.password = 'Mínimo 6 caracteres';
     setFieldErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -779,7 +808,7 @@ export default function App() {
     e.preventDefault();
     if (!validate()) return;
     setFormLoading(true); setAuthError(null);
-    const { error: err } = await supabase.auth.signInWithPassword({ email, password });
+    const { error: err } = await supabase.auth.signInWithPassword({ email: loginEmail, password });
     if (err) setAuthError('Correo o contraseña incorrectos.');
     setFormLoading(false);
   };
@@ -788,34 +817,37 @@ export default function App() {
     e.preventDefault();
     if (!validate()) return;
     setFormLoading(true); setAuthError(null); setSuccessMsg(null);
-    const { data, error: err } = await supabase.auth.signUp({
+    const email = `${username.trim().toLowerCase()}${DOMAIN}`;
+    const { error: err } = await supabase.auth.signUp({
       email, password,
       options: { data: { first_name: firstName.trim(), last_name: lastName.trim(), cargo: cargo.trim(), full_name: `${firstName.trim()} ${lastName.trim()}` } },
     });
     if (err) { setAuthError(err.message); setFormLoading(false); return; }
-    // Always show success and redirect to login
+    // Redirect to login with email prefilled, clear password
     setAuthMode('login');
+    setLoginEmail(email);
     setPassword('');
-    setFirstName(''); setLastName(''); setCargo('');
+    setUsername(''); setFirstName(''); setLastName(''); setCargo('');
     setFieldErrors({});
-    setSuccessMsg('¡Cuenta creada con éxito! Ingresa con tu correo y contraseña.');
+    setSuccessMsg(`¡Cuenta creada con éxito! Ingresa con ${email}`);
     setFormLoading(false);
   };
 
   const resetForm = () => {
-    setFirstName(''); setLastName(''); setCargo('');
-    setEmail(''); setPassword('');
+    setUsername(''); setFirstName(''); setLastName(''); setCargo('');
+    setLoginEmail(''); setPassword('');
     setFieldErrors({}); setAuthError(null); setSuccessMsg(null);
   };
 
-  // Derived
+  // ── DERIVED ───────────────────────────────────────────────────────────────
   const myPending    = tasks.filter(t => t.assigned_to === session?.user.id && t.status !== 'completed').length;
   const myCompleted  = tasks.filter(t => t.assigned_to === session?.user.id && t.status === 'completed').length;
   const overdueCount = tasks.filter(t => isOverdue(t.due_date, t.status) && (t.assigned_to === session?.user.id || t.created_by === session?.user.id)).length;
   const unread = notifications.filter(n => !n.read).length;
 
   const filteredTasks = tasks.filter(t => {
-    if (activeTab === 'assigned')  return t.assigned_to === session?.user.id && t.status !== 'completed';
+    if (activeTab === 'mine')      return t.assigned_to === session?.user.id && t.status !== 'completed';
+    if (activeTab === 'all')       return true;
     if (activeTab === 'created')   return t.created_by  === session?.user.id;
     if (activeTab === 'completed') return t.status === 'completed';
     return true;
@@ -839,16 +871,19 @@ export default function App() {
   // DASHBOARD
   // =========================================================================
   if (session) {
-    const isTeamView = activeTab === 'team';
+    const isTeamView      = activeTab === 'team';
+    const isAnalyticsView = activeTab === 'analytics';
 
-    const tabBtn = (tab, label, icon) => (
+    const tabBtn = (tab, label, icon, highlight = false) => (
       <button key={tab} onClick={() => setActiveTab(tab)}
         style={{
-          padding: '7px 14px', borderRadius: '8px', border: 'none',
+          padding: '8px 16px', borderRadius: '8px', border: 'none',
           background: activeTab === tab ? C.navy : 'transparent',
           color: activeTab === tab ? '#fff' : C.muted,
-          fontWeight: '600', fontSize: '12px', cursor: 'pointer',
-          transition: 'all 0.15s', display: 'flex', alignItems: 'center', gap: 6,
+          fontWeight: highlight ? '800' : '600',
+          fontSize: highlight ? '13px' : '12px',
+          cursor: 'pointer', transition: 'all 0.15s',
+          display: 'flex', alignItems: 'center', gap: 6,
         }}
         onMouseEnter={e => { if (activeTab !== tab) e.currentTarget.style.background = C.accentLt; }}
         onMouseLeave={e => { if (activeTab !== tab) e.currentTarget.style.background = 'transparent'; }}
@@ -872,20 +907,9 @@ export default function App() {
         `}</style>
 
         {/* NAVBAR */}
-        <header style={{
-          width: '100%', height: '64px', background: C.surface,
-          borderBottom: `1.5px solid ${C.border}`,
-          padding: '0 28px', display: 'flex', alignItems: 'center',
-          justifyContent: 'space-between', position: 'sticky', top: 0, zIndex: 100,
-          boxShadow: '0 2px 12px rgba(27,58,107,0.08)',
-        }}>
+        <header style={{ width: '100%', height: '64px', background: C.surface, borderBottom: `1.5px solid ${C.border}`, padding: '0 28px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'sticky', top: 0, zIndex: 100, boxShadow: '0 2px 12px rgba(27,58,107,0.08)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            {/* Logo — click to change */}
-            <div
-              onClick={() => logoFileRef.current?.click()}
-              style={{ cursor: 'pointer', position: 'relative' }}
-              title="Haz clic para cambiar el logo"
-            >
+            <div onClick={() => logoFileRef.current?.click()} style={{ cursor: 'pointer', position: 'relative' }} title="Clic para cambiar logo">
               {logoUrl
                 ? <img src={logoUrl} alt="Logo" style={{ width: 36, height: 36, borderRadius: '10px', objectFit: 'cover', border: `1.5px solid ${C.border}` }} />
                 : (
@@ -900,26 +924,19 @@ export default function App() {
             </div>
             <input ref={logoFileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleLogoUpload} />
             <div>
-              <span style={{ fontWeight: '800', fontSize: '15px', color: C.navy, letterSpacing: '-0.02em' }}>Hanter</span>
+              <span style={{ fontWeight: '800', fontSize: '15px', color: C.navy }}>Hanter</span>
               <span style={{ fontWeight: '400', fontSize: '15px', color: C.accent, marginLeft: 4 }}>Workspace</span>
             </div>
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            {/* Notifications */}
             <div style={{ position: 'relative' }}>
-              <button
-                onClick={() => { setShowNotifs(v => !v); if (!showNotifs) markNotifsRead(); }}
+              <button onClick={() => { setShowNotifs(v => !v); if (!showNotifs) markNotifsRead(); }}
                 style={{ position: 'relative', background: C.bg, border: `1.5px solid ${C.border}`, borderRadius: '10px', padding: '7px', cursor: 'pointer', color: C.navy, display: 'flex', transition: 'all 0.15s' }}
                 onMouseEnter={e => e.currentTarget.style.borderColor = C.accent}
-                onMouseLeave={e => e.currentTarget.style.borderColor = C.border}
-              >
+                onMouseLeave={e => e.currentTarget.style.borderColor = C.border}>
                 <Bell size={17} />
-                {unread > 0 && (
-                  <span style={{ position: 'absolute', top: -4, right: -4, background: C.danger, color: '#fff', borderRadius: '50%', width: 17, height: 17, fontSize: '9px', fontWeight: '700', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    {unread > 9 ? '9+' : unread}
-                  </span>
-                )}
+                {unread > 0 && <span style={{ position: 'absolute', top: -4, right: -4, background: C.danger, color: '#fff', borderRadius: '50%', width: 17, height: 17, fontSize: '9px', fontWeight: '700', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{unread > 9 ? '9+' : unread}</span>}
               </button>
               {showNotifs && (
                 <div style={{ position: 'absolute', right: 0, top: '50px', background: C.surface, borderRadius: '16px', width: '310px', border: `1.5px solid ${C.border}`, boxShadow: '0 12px 40px rgba(27,58,107,0.15)', overflow: 'hidden', zIndex: 200, animation: 'slideDown 0.15s ease-out' }}>
@@ -942,7 +959,6 @@ export default function App() {
               )}
             </div>
 
-            {/* User pill — no email */}
             {profile && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 12px 5px 5px', borderRadius: '100px', border: `1.5px solid ${C.border}`, background: C.bg }}>
                 <Avatar name={profile.full_name} size={30} photoUrl={profile.avatar_url} />
@@ -953,12 +969,10 @@ export default function App() {
               </div>
             )}
 
-            <button
-              onClick={() => supabase.auth.signOut()}
+            <button onClick={() => supabase.auth.signOut()}
               style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '12px', background: C.bg, border: `1.5px solid ${C.border}`, color: C.muted, padding: '7px 14px', borderRadius: '20px', cursor: 'pointer', fontWeight: '600', transition: 'all 0.15s' }}
               onMouseEnter={e => { e.currentTarget.style.background = C.dangerLt; e.currentTarget.style.borderColor = '#FECACA'; e.currentTarget.style.color = C.danger; }}
-              onMouseLeave={e => { e.currentTarget.style.background = C.bg; e.currentTarget.style.borderColor = C.border; e.currentTarget.style.color = C.muted; }}
-            >
+              onMouseLeave={e => { e.currentTarget.style.background = C.bg; e.currentTarget.style.borderColor = C.border; e.currentTarget.style.color = C.muted; }}>
               <LogOut size={13} /> Salir
             </button>
           </div>
@@ -966,7 +980,6 @@ export default function App() {
 
         {/* MAIN */}
         <main style={{ maxWidth: '1300px', margin: '0 auto', padding: '36px 28px', animation: 'fadeUp 0.4s ease-out' }}>
-          {/* Page header */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 32, flexWrap: 'wrap', gap: 16 }}>
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
@@ -975,27 +988,17 @@ export default function App() {
                   Bienvenido, {profile?.full_name?.split(' ')[0] ?? 'Usuario'}
                 </h1>
               </div>
-              <p style={{ margin: 0, color: C.muted, fontSize: '13px', fontWeight: '500', paddingLeft: 14 }}>
-                {profile?.cargo}
-              </p>
+              <p style={{ margin: 0, color: C.muted, fontSize: '13px', fontWeight: '500', paddingLeft: 14 }}>{profile?.cargo}</p>
             </div>
-            <button
-              onClick={() => { setPreAssignTo(null); setShowNewTask(true); }}
-              style={{
-                padding: '10px 22px', background: `linear-gradient(135deg, ${C.navy} 0%, ${C.blue} 100%)`,
-                color: '#fff', border: 'none', borderRadius: '20px', fontSize: '13px', fontWeight: '700',
-                cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8,
-                boxShadow: '0 4px 16px rgba(37,99,235,0.30)', transition: 'all 0.15s',
-              }}
+            <button onClick={() => { setPreAssignTo(null); setShowNewTask(true); }}
+              style={{ padding: '10px 22px', background: `linear-gradient(135deg, ${C.navy} 0%, ${C.blue} 100%)`, color: '#fff', border: 'none', borderRadius: '20px', fontSize: '13px', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, boxShadow: '0 4px 16px rgba(37,99,235,0.30)', transition: 'all 0.15s' }}
               onMouseEnter={e => e.currentTarget.style.opacity = '0.88'}
-              onMouseLeave={e => e.currentTarget.style.opacity = '1'}
-            >
+              onMouseLeave={e => e.currentTarget.style.opacity = '1'}>
               <Plus size={16} /> Nueva Tarea
             </button>
           </div>
 
-          {/* Stats */}
-          {!isTeamView && (
+          {!isTeamView && !isAnalyticsView && (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14, marginBottom: 28 }}>
               <StatCard icon={Clock}        label="Mis Pendientes" value={myPending}    iconColor={C.accent}  iconBg={C.accentLt}  accent={C.accent} />
               <StatCard icon={CheckCircle2} label="Completadas"    value={myCompleted}  iconColor={C.success} iconBg={C.successLt} accent={C.success} />
@@ -1003,24 +1006,22 @@ export default function App() {
             </div>
           )}
 
-          {/* Tabs */}
+          {/* TABS */}
           <div style={{ background: C.surface, borderRadius: '12px', padding: '5px', display: 'inline-flex', gap: 3, marginBottom: 28, border: `1.5px solid ${C.border}`, boxShadow: '0 1px 4px rgba(27,58,107,0.06)' }}>
-            {tabBtn('all',       'Todas',         LayoutDashboard)}
-            {tabBtn('assigned',  'Asignadas a mí', CheckSquare)}
+            {tabBtn('mine',      'Mis Pendientes', Clock,          true)}
+            {tabBtn('all',       'Todas',          LayoutDashboard)}
             {tabBtn('created',   'Creadas por mí', Briefcase)}
             {tabBtn('completed', 'Completadas',    CheckCircle2)}
             {tabBtn('team',      'Equipo',         Users)}
+            {tabBtn('analytics', 'Analítica',      BarChart2)}
           </div>
 
-          {/* Team view */}
-          {isTeamView ? (
-            <TeamView
-              profiles={profiles}
-              currentUserId={session.user.id}
-              onAssignTask={(profileId) => { setPreAssignTo(profileId); setShowNewTask(true); }}
-            />
+          {/* VIEWS */}
+          {isAnalyticsView ? (
+            <AnalyticsDashboard tasks={tasks} profiles={profiles} currentUserId={session.user.id} />
+          ) : isTeamView ? (
+            <TeamView profiles={profiles} tasks={tasks} currentUserId={session.user.id} onAssignTask={(id) => { setPreAssignTo(id); setShowNewTask(true); }} />
           ) : activeTab !== 'completed' ? (
-            /* Kanban */
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 20 }}>
               {STATUS_COLS.map(col => {
                 const colTasks = filteredTasks.filter(t => t.status === col.status);
@@ -1058,19 +1059,13 @@ export default function App() {
         </main>
 
         {showNewTask && (
-          <NewTaskModal
-            profiles={profiles} currentUserId={session.user.id}
-            preAssignTo={preAssignTo}
+          <NewTaskModal profiles={profiles} currentUserId={session.user.id} preAssignTo={preAssignTo}
             onClose={() => { setShowNewTask(false); setPreAssignTo(null); }}
-            onCreated={t => setTasks(prev => [t, ...prev])}
-          />
+            onCreated={t => setTasks(prev => [t, ...prev])} />
         )}
         {selectedTask && (
-          <TaskDetailModal
-            task={selectedTask} profiles={profiles} currentUserId={session.user.id}
-            onClose={() => setSelectedTask(null)}
-            onStatusChange={handleStatusChange} onDelete={handleDelete}
-          />
+          <TaskDetailModal task={selectedTask} profiles={profiles} currentUserId={session.user.id}
+            onClose={() => setSelectedTask(null)} onStatusChange={handleStatusChange} onDelete={handleDelete} />
         )}
         {showNotifs && <div style={{ position: 'fixed', inset: 0, zIndex: 99 }} onClick={() => setShowNotifs(false)} />}
       </div>
@@ -1078,7 +1073,7 @@ export default function App() {
   }
 
   // =========================================================================
-  // AUTH PAGE — estilo oscuro como imagen 1
+  // AUTH PAGE
   // =========================================================================
   const darkInp = {
     width: '100%', height: '46px', padding: '0 16px',
@@ -1091,48 +1086,31 @@ export default function App() {
   const errBorder = { borderColor: '#EF4444' };
 
   return (
-    <div style={{
-      minHeight: '100vh', display: 'flex',
-      position: 'relative', overflow: 'hidden',
-      background: C.darkBg,
-      backgroundImage: `url(${BG_IMAGE})`,
-      backgroundSize: 'cover', backgroundPosition: 'center',
-      fontFamily: "'Sora', 'Plus Jakarta Sans', sans-serif",
-    }}>
+    <div style={{ minHeight: '100vh', display: 'flex', position: 'relative', overflow: 'hidden', background: '#000', backgroundImage: `url(${BG_IMAGE})`, backgroundSize: 'cover', backgroundPosition: 'center', fontFamily: "'Sora', sans-serif" }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700;800;900&display=swap');
         @keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
         @keyframes fadeUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
         *{box-sizing:border-box} body{margin:0}
-        .dark-input::placeholder{color:#6B7280}
+        .dark-input::placeholder{color:#4B5563}
         .dark-input:focus{border-color:${C.accent}!important;box-shadow:0 0 0 3px rgba(91,155,213,0.15)!important;background:rgba(255,255,255,0.10)!important}
         .auth-tab{transition:all 0.2s}
       `}</style>
 
-      {/* Overlay */}
-      <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(135deg, rgba(5,8,20,0.88) 0%, rgba(10,20,45,0.80) 100%)', backdropFilter: 'blur(2px)' }} />
+      {/* Darker overlay so bg is visible but dark */}
+      <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(135deg, rgba(0,0,0,0.82) 0%, rgba(5,10,30,0.78) 100%)', backdropFilter: 'blur(1px)' }} />
 
-      <div style={{
-        position: 'relative', zIndex: 10, width: '100%',
-        display: 'flex', flexDirection: 'row', alignItems: 'center',
-        justifyContent: 'space-between', padding: '40px 64px',
-        maxWidth: '1200px', margin: '0 auto',
-        gap: '64px',
-      }}>
+      <div style={{ position: 'relative', zIndex: 10, width: '100%', display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: '40px 64px', maxWidth: '1200px', margin: '0 auto', gap: '64px' }}>
         {/* Left copy */}
         <div style={{ flex: 1, color: '#fff', maxWidth: '480px', animation: 'fadeUp 0.5s ease-out' }}>
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: 'rgba(91,155,213,0.15)', border: '1px solid rgba(91,155,213,0.3)', borderRadius: '100px', padding: '5px 14px', marginBottom: 24 }}>
             <Zap size={12} color={C.accent} />
             <span style={{ fontSize: '11px', fontWeight: '700', color: C.accent, letterSpacing: '0.12em', textTransform: 'uppercase' }}>Bienvenido a</span>
           </div>
-          <h1 style={{ margin: '0 0 4px', fontSize: '64px', fontWeight: '900', lineHeight: '1', letterSpacing: '-0.04em', color: '#fff' }}>
-            Hanter
-          </h1>
-          <h1 style={{ margin: '0 0 24px', fontSize: '64px', fontWeight: '900', lineHeight: '1', letterSpacing: '-0.04em', color: C.accent }}>
-            Workspace
-          </h1>
+          <h1 style={{ margin: '0 0 4px', fontSize: '64px', fontWeight: '900', lineHeight: '1', letterSpacing: '-0.04em', color: '#fff' }}>Hanter</h1>
+          <h1 style={{ margin: '0 0 24px', fontSize: '64px', fontWeight: '900', lineHeight: '1', letterSpacing: '-0.04em', color: C.accent }}>Workspace</h1>
           <p style={{ margin: 0, fontSize: '15px', color: 'rgba(255,255,255,0.55)', fontWeight: '300', lineHeight: '1.80', maxWidth: '380px' }}>
-            Gestiona tus tareas, haz seguimiento en tiempo real y colabora con tu equipo con total autonomía. Sin microgestión ni complicaciones.
+            Gestiona tus tareas, haz seguimiento en tiempo real y colabora con tu equipo con total autonomía.
           </p>
           <div style={{ marginTop: 40, display: 'flex', flexDirection: 'column', gap: 12 }}>
             {['Tablero Kanban en tiempo real', 'Notificaciones automáticas', 'Control por prioridad y fecha límite'].map(f => (
@@ -1147,50 +1125,39 @@ export default function App() {
         </div>
 
         {/* Auth card */}
-        <div style={{
-          width: '100%', maxWidth: '420px',
-          background: 'rgba(17,24,39,0.85)',
-          backdropFilter: 'blur(24px)',
-          borderRadius: '24px',
-          border: '1px solid rgba(255,255,255,0.08)',
-          boxShadow: '0 32px 80px rgba(0,0,0,0.5)',
-          overflow: 'hidden',
-          animation: 'fadeUp 0.5s ease-out 0.1s both',
-        }}>
-          {/* Tabs at top */}
+        <div style={{ width: '100%', maxWidth: '420px', background: 'rgba(10,14,25,0.90)', backdropFilter: 'blur(24px)', borderRadius: '24px', border: '1px solid rgba(255,255,255,0.07)', boxShadow: '0 32px 80px rgba(0,0,0,0.7)', overflow: 'hidden', animation: 'fadeUp 0.5s ease-out 0.1s both' }}>
+          {/* Tabs */}
           <div style={{ display: 'flex', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
             {[['login', 'Ingresar'], ['signup', 'Crear cuenta']].map(([mode, label]) => (
-              <button key={mode} className="auth-tab"
-                onClick={() => { setAuthMode(mode); resetForm(); }}
-                style={{
-                  flex: 1, padding: '18px 0', border: 'none', cursor: 'pointer', fontFamily: 'inherit',
-                  background: authMode === mode ? 'rgba(91,155,213,0.1)' : 'transparent',
-                  color: authMode === mode ? C.accent : '#6B7280',
-                  fontSize: '13px', fontWeight: '700', letterSpacing: '0.02em',
-                  borderBottom: authMode === mode ? `2px solid ${C.accent}` : '2px solid transparent',
-                  transition: 'all 0.2s',
-                }}
-              >
+              <button key={mode} className="auth-tab" onClick={() => { setAuthMode(mode); resetForm(); }}
+                style={{ flex: 1, padding: '18px 0', border: 'none', cursor: 'pointer', fontFamily: 'inherit', background: authMode === mode ? 'rgba(91,155,213,0.1)' : 'transparent', color: authMode === mode ? C.accent : '#6B7280', fontSize: '13px', fontWeight: '700', borderBottom: authMode === mode ? `2px solid ${C.accent}` : '2px solid transparent', transition: 'all 0.2s' }}>
                 {label}
               </button>
             ))}
           </div>
 
           <div style={{ padding: '28px' }}>
-            {/* Alerts */}
-            {authError && (
-              <div style={{ padding: '10px 14px', background: 'rgba(220,38,38,0.12)', border: '1px solid rgba(220,38,38,0.3)', borderRadius: '10px', color: '#FCA5A5', fontSize: '12px', marginBottom: 16, fontWeight: '600' }}>
-                {authError}
-              </div>
-            )}
-            {successMsg && (
-              <div style={{ padding: '10px 14px', background: 'rgba(22,163,74,0.12)', border: '1px solid rgba(22,163,74,0.3)', borderRadius: '10px', color: '#86EFAC', fontSize: '12px', marginBottom: 16, fontWeight: '600' }}>
-                {successMsg}
-              </div>
-            )}
+            {authError && <div style={{ padding: '10px 14px', background: 'rgba(220,38,38,0.12)', border: '1px solid rgba(220,38,38,0.3)', borderRadius: '10px', color: '#FCA5A5', fontSize: '12px', marginBottom: 16, fontWeight: '600' }}>{authError}</div>}
+            {successMsg && <div style={{ padding: '10px 14px', background: 'rgba(22,163,74,0.12)', border: '1px solid rgba(22,163,74,0.3)', borderRadius: '10px', color: '#86EFAC', fontSize: '12px', marginBottom: 16, fontWeight: '600' }}>{successMsg}</div>}
+
             <form onSubmit={authMode === 'signup' ? handleSignUp : handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               {authMode === 'signup' && (
                 <>
+                  {/* Username with domain suffix */}
+                  <div>
+                    <label style={darkLbl}>Usuario *</label>
+                    <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                      <input className="dark-input" style={{ ...darkInp, borderRadius: '10px 0 0 10px', ...(fieldErrors.username ? errBorder : {}) }}
+                        placeholder="donan.chavez" value={username}
+                        onChange={e => { setUsername(e.target.value.replace(/\s/g, '').toLowerCase()); setFieldErrors(x => ({ ...x, username: undefined })); }} required />
+                      <div style={{ height: '46px', padding: '0 12px', background: 'rgba(91,155,213,0.15)', border: `1.5px solid ${C.darkBorder}`, borderLeft: 'none', borderRadius: '0 10px 10px 0', display: 'flex', alignItems: 'center', whiteSpace: 'nowrap', fontSize: '13px', color: C.accent, fontWeight: '600' }}>
+                        {DOMAIN}
+                      </div>
+                    </div>
+                    {fieldErrors.username && <p style={{ margin: '3px 0 0', fontSize: '10px', color: '#FCA5A5' }}>{fieldErrors.username}</p>}
+                    <p style={{ margin: '4px 0 0', fontSize: '10px', color: '#6B7280' }}>Tu correo será: {username || 'usuario'}{DOMAIN}</p>
+                  </div>
+
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                     <div>
                       <label style={darkLbl}>Nombres *</label>
@@ -1207,6 +1174,7 @@ export default function App() {
                       {fieldErrors.lastName && <p style={{ margin: '3px 0 0', fontSize: '10px', color: '#FCA5A5' }}>{fieldErrors.lastName}</p>}
                     </div>
                   </div>
+
                   <div>
                     <label style={darkLbl}>Cargo *</label>
                     <input list="cargo-opts" className="dark-input" style={{ ...darkInp, ...(fieldErrors.cargo ? errBorder : {}) }}
@@ -1218,21 +1186,21 @@ export default function App() {
                 </>
               )}
 
-              <div>
-                <label style={darkLbl}>Correo electrónico</label>
-                <input className="dark-input" style={{ ...darkInp, ...(fieldErrors.email ? errBorder : {}) }}
-                  type="email" placeholder="correo@empresa.com"
-                  value={email} onChange={e => { setEmail(e.target.value); setFieldErrors(x => ({ ...x, email: undefined })); }} required />
-                {fieldErrors.email && <p style={{ margin: '3px 0 0', fontSize: '10px', color: '#FCA5A5' }}>{fieldErrors.email}</p>}
-              </div>
+              {authMode === 'login' && (
+                <div>
+                  <label style={darkLbl}>Correo electrónico</label>
+                  <input className="dark-input" style={{ ...darkInp, ...(fieldErrors.loginEmail ? errBorder : {}) }}
+                    type="email" placeholder="donan.chavez@hanter.com.pe"
+                    value={loginEmail} onChange={e => { setLoginEmail(e.target.value); setFieldErrors(x => ({ ...x, loginEmail: undefined })); }} required />
+                  {fieldErrors.loginEmail && <p style={{ margin: '3px 0 0', fontSize: '10px', color: '#FCA5A5' }}>{fieldErrors.loginEmail}</p>}
+                </div>
+              )}
 
               <div>
                 <label style={darkLbl}>Contraseña</label>
                 <div style={{ position: 'relative' }}>
-                  <input className="dark-input"
-                    style={{ ...darkInp, paddingRight: 44, ...(fieldErrors.password ? errBorder : {}) }}
-                    type={showPass ? 'text' : 'password'}
-                    placeholder="••••••••" value={password}
+                  <input className="dark-input" style={{ ...darkInp, paddingRight: 44, ...(fieldErrors.password ? errBorder : {}) }}
+                    type={showPass ? 'text' : 'password'} placeholder="••••••••" value={password}
                     onChange={e => { setPassword(e.target.value); setFieldErrors(x => ({ ...x, password: undefined })); }} required />
                   <button type="button" onClick={() => setShowPass(v => !v)}
                     style={{ position: 'absolute', right: 13, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: '#6B7280', display: 'flex' }}>
@@ -1243,19 +1211,7 @@ export default function App() {
               </div>
 
               <button type="submit" disabled={formLoading}
-                style={{
-                  width: '100%', height: '48px',
-                  background: authMode === 'signup'
-                    ? `linear-gradient(135deg, ${C.blue} 0%, ${C.accent} 100%)`
-                    : `linear-gradient(135deg, ${C.blue} 0%, ${C.navy} 100%)`,
-                  color: '#fff', border: 'none', borderRadius: '12px',
-                  fontSize: '14px', fontWeight: '700', cursor: formLoading ? 'not-allowed' : 'pointer',
-                  marginTop: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9,
-                  opacity: formLoading ? 0.75 : 1, transition: 'all 0.15s',
-                  boxShadow: '0 4px 20px rgba(37,99,235,0.35)',
-                  fontFamily: 'inherit',
-                }}
-              >
+                style={{ width: '100%', height: '48px', background: authMode === 'signup' ? `linear-gradient(135deg, ${C.blue} 0%, ${C.accent} 100%)` : `linear-gradient(135deg, ${C.blue} 0%, ${C.navy} 100%)`, color: '#fff', border: 'none', borderRadius: '12px', fontSize: '14px', fontWeight: '700', cursor: formLoading ? 'not-allowed' : 'pointer', marginTop: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9, opacity: formLoading ? 0.75 : 1, transition: 'all 0.15s', boxShadow: '0 4px 20px rgba(37,99,235,0.35)', fontFamily: 'inherit' }}>
                 {formLoading && <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} />}
                 {!formLoading && (authMode === 'signup' ? 'Crear cuenta' : 'Ingresar al workspace')}
                 {formLoading && (authMode === 'signup' ? 'Creando...' : 'Ingresando...')}
