@@ -9,10 +9,11 @@ import {
   Upload, Paperclip, ExternalLink, ChevronRight,
   Camera, TrendingUp, BarChart2, Target, Trophy,
   Medal, Crown, Star, ChevronUp, ChevronDown,
+  Settings, User, Edit2, Save, ChevronDown as Chevron,
 } from 'lucide-react';
-import logoHS from './LOGO_HS_SF.png'; 
+import logoHS from './LOGO_HS_SF.png';
+
 // ─── CONSTANTS ────────────────────────────────────────────────────────────────
-// Reemplaza esta URL con la imagen de tu logo
 const LOGO_URL = logoHS;
 const BG_IMAGE = "https://img.magnific.com/foto-gratis/colegas-sonrientes-tiro-medio-trabajo_23-2149308453.jpg?semt=ais_hybrid&w=740&q=80";
 const DOMAIN = '@hanter.com.pe';
@@ -110,6 +111,183 @@ function Chip({ children, color, bg, border }) {
     <span style={{ display: 'inline-flex', alignItems: 'center', padding: '2px 8px', borderRadius: '20px', fontSize: '10px', fontWeight: '700', letterSpacing: '0.03em', color, background: bg, border: `1px solid ${border}` }}>
       {children}
     </span>
+  );
+}
+
+// ─── PROFILE MENU ─────────────────────────────────────────────────────────────
+function ProfileMenu({ profile, currentUserId, onClose, onProfileUpdated }) {
+  const [tab, setTab] = useState('info'); // 'info' | 'edit'
+  const [editForm, setEditForm] = useState({
+    first_name: profile?.first_name || '',
+    last_name: profile?.last_name || '',
+    cargo: profile?.cargo || '',
+  });
+  const [saving, setSaving] = useState(false);
+  const [saveMsg, setSaveMsg] = useState('');
+  const [saveErr, setSaveErr] = useState('');
+  const fileRef = useRef();
+
+  const handlePhotoUpload = async (file) => {
+    if (!file) return;
+    const ext = file.name.split('.').pop();
+    const path = `avatars/${currentUserId}.${ext}`;
+    const { error: upErr } = await supabase.storage.from('avatars').upload(path, file, { upsert: true });
+    if (upErr) { setSaveErr('Error subiendo foto: ' + upErr.message); return; }
+    const { data: urlData } = supabase.storage.from('avatars').getPublicUrl(path);
+    const { data: updated } = await supabase
+      .from('profiles')
+      .update({ avatar_url: urlData.publicUrl })
+      .eq('id', currentUserId)
+      .select()
+      .single();
+    if (updated) { onProfileUpdated(updated); setSaveMsg('Foto actualizada'); }
+  };
+
+  const handleSave = async () => {
+    if (!editForm.first_name.trim() || !editForm.last_name.trim()) {
+      setSaveErr('Nombre y apellido son obligatorios.'); return;
+    }
+    setSaving(true); setSaveErr(''); setSaveMsg('');
+    const { data: updated, error } = await supabase
+      .from('profiles')
+      .update({
+        first_name: editForm.first_name.trim(),
+        last_name: editForm.last_name.trim(),
+        cargo: editForm.cargo.trim(),
+      })
+      .eq('id', currentUserId)
+      .select()
+      .single();
+    setSaving(false);
+    if (error) { setSaveErr(error.message); return; }
+    if (updated) { onProfileUpdated(updated); setSaveMsg('¡Cambios guardados!'); setTab('info'); }
+  };
+
+  const inp = {
+    width: '100%', height: '40px', padding: '0 12px',
+    borderRadius: '8px', border: `1.5px solid ${C.border}`,
+    background: C.bg, color: C.text, fontSize: '13px',
+    outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit',
+  };
+
+  return (
+    <>
+      {/* Backdrop */}
+      <div style={{ position: 'fixed', inset: 0, zIndex: 199 }} onClick={onClose} />
+      {/* Menu */}
+      <div style={{
+        position: 'absolute', right: 0, top: 'calc(100% + 10px)',
+        background: C.surface, borderRadius: '20px', width: '300px',
+        border: `1.5px solid ${C.border}`,
+        boxShadow: '0 16px 48px rgba(27,58,107,0.18)',
+        overflow: 'hidden', zIndex: 200,
+        animation: 'slideDown 0.15s ease-out',
+      }}>
+        {/* Header with avatar */}
+        <div style={{ background: `linear-gradient(135deg, ${C.navy} 0%, ${C.blue} 100%)`, padding: '20px', textAlign: 'center', position: 'relative' }}>
+          <div style={{ position: 'relative', display: 'inline-block', marginBottom: 10 }}>
+            <Avatar name={profile?.full_name || ''} size={64} photoUrl={profile?.avatar_url} />
+            <button onClick={() => fileRef.current?.click()}
+              style={{ position: 'absolute', bottom: 0, right: 0, width: 22, height: 22, borderRadius: '50%', background: C.gold, border: '2px solid #fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+              <Camera size={10} color="#fff" />
+            </button>
+          </div>
+          <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }}
+            onChange={e => handlePhotoUpload(e.target.files[0])} />
+          <div style={{ fontSize: '15px', fontWeight: '800', color: '#fff' }}>{profile?.full_name}</div>
+          <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.65)', marginTop: 2 }}>{profile?.email}</div>
+          <div style={{ marginTop: 6, display: 'inline-block', background: 'rgba(255,255,255,0.15)', borderRadius: '20px', padding: '2px 10px', fontSize: '10px', color: 'rgba(255,255,255,0.85)', fontWeight: '600' }}>
+            {profile?.cargo}
+          </div>
+        </div>
+
+        {/* Tabs */}
+        <div style={{ display: 'flex', borderBottom: `1px solid ${C.border}` }}>
+          {[['info', 'Mi perfil', User], ['edit', 'Editar', Edit2]].map(([id, label, Ic]) => (
+            <button key={id} onClick={() => { setTab(id); setSaveMsg(''); setSaveErr(''); }}
+              style={{
+                flex: 1, padding: '11px 0', border: 'none', cursor: 'pointer',
+                fontFamily: 'inherit', fontSize: '12px', fontWeight: '700',
+                background: tab === id ? C.accentLt : 'transparent',
+                color: tab === id ? C.navy : C.muted,
+                borderBottom: tab === id ? `2px solid ${C.blue}` : '2px solid transparent',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
+              }}>
+              <Ic size={12} />{label}
+            </button>
+          ))}
+        </div>
+
+        <div style={{ padding: '16px' }}>
+          {tab === 'info' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {[
+                { label: 'Nombre completo', value: profile?.full_name },
+                { label: 'Correo', value: profile?.email },
+                { label: 'Cargo', value: profile?.cargo },
+              ].map(({ label, value }) => (
+                <div key={label} style={{ background: C.bg, borderRadius: '10px', padding: '10px 12px', border: `1px solid ${C.border}` }}>
+                  <div style={{ fontSize: '10px', fontWeight: '700', color: C.mutedLt, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 2 }}>{label}</div>
+                  <div style={{ fontSize: '13px', fontWeight: '600', color: C.navy }}>{value || '—'}</div>
+                </div>
+              ))}
+              <button onClick={() => setTab('edit')}
+                style={{ width: '100%', padding: '9px', borderRadius: '10px', border: `1.5px solid ${C.border}`, background: 'transparent', color: C.muted, fontSize: '12px', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 4 }}>
+                <Edit2 size={12} /> Editar información
+              </button>
+            </div>
+          )}
+
+          {tab === 'edit' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {saveMsg && (
+                <div style={{ padding: '8px 12px', background: C.successLt, borderRadius: '8px', color: C.success, fontSize: '12px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <CheckCircle2 size={13} />{saveMsg}
+                </div>
+              )}
+              {saveErr && (
+                <div style={{ padding: '8px 12px', background: C.dangerLt, borderRadius: '8px', color: C.danger, fontSize: '12px', fontWeight: '600' }}>
+                  {saveErr}
+                </div>
+              )}
+              <div>
+                <label style={{ display: 'block', fontSize: '10px', fontWeight: '700', color: C.navy, marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Nombres</label>
+                <input style={inp} value={editForm.first_name}
+                  onChange={e => setEditForm(f => ({ ...f, first_name: e.target.value }))}
+                  onFocus={e => { e.target.style.borderColor = C.blue; e.target.style.background = '#fff'; }}
+                  onBlur={e => { e.target.style.borderColor = C.border; e.target.style.background = C.bg; }} />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '10px', fontWeight: '700', color: C.navy, marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Apellidos</label>
+                <input style={inp} value={editForm.last_name}
+                  onChange={e => setEditForm(f => ({ ...f, last_name: e.target.value }))}
+                  onFocus={e => { e.target.style.borderColor = C.blue; e.target.style.background = '#fff'; }}
+                  onBlur={e => { e.target.style.borderColor = C.border; e.target.style.background = C.bg; }} />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '10px', fontWeight: '700', color: C.navy, marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Cargo</label>
+                <input list="cargo-opts-profile" style={inp} value={editForm.cargo}
+                  onChange={e => setEditForm(f => ({ ...f, cargo: e.target.value }))}
+                  onFocus={e => { e.target.style.borderColor = C.blue; e.target.style.background = '#fff'; }}
+                  onBlur={e => { e.target.style.borderColor = C.border; e.target.style.background = C.bg; }} />
+                <datalist id="cargo-opts-profile">{CARGO_OPTIONS.map(c => <option key={c} value={c} />)}</datalist>
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button onClick={() => setTab('info')}
+                  style={{ flex: 1, padding: '9px', borderRadius: '10px', border: `1.5px solid ${C.border}`, background: 'transparent', color: C.muted, fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
+                  Cancelar
+                </button>
+                <button onClick={handleSave} disabled={saving}
+                  style={{ flex: 1, padding: '9px', borderRadius: '10px', border: 'none', background: `linear-gradient(135deg, ${C.navy}, ${C.blue})`, color: '#fff', fontSize: '12px', fontWeight: '700', cursor: saving ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, opacity: saving ? 0.75 : 1 }}>
+                  {saving ? <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /> : <Save size={12} />}
+                  {saving ? 'Guardando...' : 'Guardar'}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </>
   );
 }
 
@@ -431,7 +609,6 @@ function NewTaskModal({ profiles, currentUserId, onClose, onCreated, preAssignTo
     onCreated(data); onClose();
   };
 
-  // Min datetime string for the input
   const minDatetime = (() => {
     const now = new Date();
     now.setSeconds(0, 0);
@@ -540,18 +717,10 @@ function NewTaskModal({ profiles, currentUserId, onClose, onCreated, preAssignTo
 function StatCard({ icon: Icon, label, value, iconColor, iconBg, accent, sublabel }) {
   return (
     <div style={{
-      background: C.surface,
-      border: `1.5px solid ${C.border}`,
-      borderRadius: '18px',
-      padding: '20px 22px',
-      display: 'flex',
-      alignItems: 'center',
-      gap: '16px',
-      boxShadow: '0 2px 8px rgba(27,58,107,0.07)',
-      borderTop: `4px solid ${accent}`,
-      transition: 'box-shadow 0.2s, transform 0.15s',
-      flex: 1,
-      minWidth: 0,
+      background: C.surface, border: `1.5px solid ${C.border}`, borderRadius: '18px', padding: '20px 22px',
+      display: 'flex', alignItems: 'center', gap: '16px',
+      boxShadow: '0 2px 8px rgba(27,58,107,0.07)', borderTop: `4px solid ${accent}`,
+      transition: 'box-shadow 0.2s, transform 0.15s', flex: 1, minWidth: 0,
     }}
       onMouseEnter={e => { e.currentTarget.style.boxShadow = '0 6px 20px rgba(27,58,107,0.13)'; e.currentTarget.style.transform = 'translateY(-2px)'; }}
       onMouseLeave={e => { e.currentTarget.style.boxShadow = '0 2px 8px rgba(27,58,107,0.07)'; e.currentTarget.style.transform = 'translateY(0)'; }}>
@@ -570,7 +739,6 @@ function StatCard({ icon: Icon, label, value, iconColor, iconBg, accent, sublabe
 // ─── LEADERBOARD VIEW ─────────────────────────────────────────────────────────
 function LeaderboardView({ profiles, tasks }) {
   const now = new Date();
-
   const scores = profiles.map(profile => {
     const assigned = tasks.filter(t => t.assigned_to === profile.id);
     const completed = assigned.filter(t => t.status === 'completed').length;
@@ -585,7 +753,6 @@ function LeaderboardView({ profiles, tasks }) {
     { icon: Trophy, color: C.bronze, bg: '#FEF3C7',   label: '3°' },
   ];
 
-  // Calendar: upcoming tasks (next 14 days)
   const upcomingTasks = tasks
     .filter(t => t.due_date && t.status !== 'completed')
     .map(t => {
@@ -612,11 +779,8 @@ function LeaderboardView({ profiles, tasks }) {
         <h2 style={{ margin: '0 0 4px', fontSize: '22px', fontWeight: '800', color: C.navy }}>🏆 Clasificación del Equipo</h2>
         <p style={{ margin: 0, fontSize: '13px', color: C.muted }}>+1 punto por tarea completada · -1 punto por tarea vencida</p>
       </div>
-
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
-        {/* Leaderboard */}
         <div>
-          {/* Top 3 podium */}
           {scores.slice(0, 3).length > 0 && (
             <div style={{ display: 'flex', gap: 12, marginBottom: 20, alignItems: 'flex-end' }}>
               {scores.slice(0, 3).map((p, i) => {
@@ -629,12 +793,7 @@ function LeaderboardView({ profiles, tasks }) {
                       <div style={{ fontSize: i === 0 ? '13px' : '11px', fontWeight: '800', color: C.navy, marginTop: 6, maxWidth: 90, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.full_name.split(' ')[0]}</div>
                       <div style={{ fontSize: '10px', color: C.muted, maxWidth: 90, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.cargo?.split(' ')[0]}</div>
                     </div>
-                    <div style={{
-                      width: '100%', height: heights[i], borderRadius: '14px 14px 0 0',
-                      background: `linear-gradient(to bottom, ${ri.bg}, ${ri.bg}dd)`,
-                      border: `2px solid ${ri.color}33`,
-                      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4,
-                    }}>
+                    <div style={{ width: '100%', height: heights[i], borderRadius: '14px 14px 0 0', background: `linear-gradient(to bottom, ${ri.bg}, ${ri.bg}dd)`, border: `2px solid ${ri.color}33`, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
                       <ri.icon size={i === 0 ? 24 : 18} color={ri.color} />
                       <div style={{ fontSize: i === 0 ? '28px' : '22px', fontWeight: '900', color: ri.color, letterSpacing: '-0.03em' }}>{p.score}</div>
                       <div style={{ fontSize: '9px', fontWeight: '700', color: ri.color, opacity: 0.7 }}>pts</div>
@@ -644,27 +803,16 @@ function LeaderboardView({ profiles, tasks }) {
               })}
             </div>
           )}
-
-          {/* Full ranking list */}
           <div style={{ background: C.surface, borderRadius: '20px', border: `1.5px solid ${C.border}`, overflow: 'hidden', boxShadow: '0 2px 8px rgba(27,58,107,0.07)' }}>
             <div style={{ padding: '16px 20px', borderBottom: `1px solid ${C.border}`, background: `linear-gradient(to right, ${C.navy}, ${C.blue})` }}>
               <span style={{ fontSize: '12px', fontWeight: '700', color: '#fff', letterSpacing: '0.05em', textTransform: 'uppercase' }}>Tabla de posiciones</span>
             </div>
             {scores.map((p, i) => (
-              <div key={p.id} style={{
-                display: 'flex', alignItems: 'center', gap: 12, padding: '14px 20px',
-                borderBottom: i < scores.length - 1 ? `1px solid ${C.border}` : 'none',
-                background: i === 0 ? `linear-gradient(to right, ${C.goldLt}88, transparent)` : i === 1 ? `linear-gradient(to right, #F1F5F988, transparent)` : i === 2 ? `linear-gradient(to right, ${C.warnLt}66, transparent)` : 'transparent',
-                transition: 'background 0.2s',
-              }}
+              <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 20px', borderBottom: i < scores.length - 1 ? `1px solid ${C.border}` : 'none', background: i === 0 ? `linear-gradient(to right, ${C.goldLt}88, transparent)` : i === 1 ? `linear-gradient(to right, #F1F5F988, transparent)` : i === 2 ? `linear-gradient(to right, ${C.warnLt}66, transparent)` : 'transparent', transition: 'background 0.2s' }}
                 onMouseEnter={e => { if (i > 2) e.currentTarget.style.background = C.bg; }}
-                onMouseLeave={e => { if (i > 2) e.currentTarget.style.background = 'transparent'; }}
-              >
+                onMouseLeave={e => { if (i > 2) e.currentTarget.style.background = 'transparent'; }}>
                 <div style={{ width: 28, textAlign: 'center' }}>
-                  {i < 3
-                    ? React.createElement(rankIcons[i].icon, { size: 16, color: rankIcons[i].color })
-                    : <span style={{ fontSize: '13px', fontWeight: '700', color: C.mutedLt }}>#{i + 1}</span>
-                  }
+                  {i < 3 ? React.createElement(rankIcons[i].icon, { size: 16, color: rankIcons[i].color }) : <span style={{ fontSize: '13px', fontWeight: '700', color: C.mutedLt }}>#{i + 1}</span>}
                 </div>
                 <Avatar name={p.full_name} size={36} photoUrl={p.avatar_url} />
                 <div style={{ flex: 1, minWidth: 0 }}>
@@ -680,11 +828,7 @@ function LeaderboardView({ profiles, tasks }) {
                     <div style={{ fontSize: '11px', fontWeight: '700', color: C.danger }}>-{p.overdue}</div>
                     <div style={{ fontSize: '9px', color: C.mutedLt }}>⚠</div>
                   </div>
-                  <div style={{
-                    minWidth: 48, textAlign: 'center', padding: '4px 10px', borderRadius: '20px',
-                    background: p.score > 0 ? C.successLt : p.score < 0 ? C.dangerLt : C.bg,
-                    border: `1.5px solid ${p.score > 0 ? '#BBF7D0' : p.score < 0 ? '#FECACA' : C.border}`,
-                  }}>
+                  <div style={{ minWidth: 48, textAlign: 'center', padding: '4px 10px', borderRadius: '20px', background: p.score > 0 ? C.successLt : p.score < 0 ? C.dangerLt : C.bg, border: `1.5px solid ${p.score > 0 ? '#BBF7D0' : p.score < 0 ? '#FECACA' : C.border}` }}>
                     <span style={{ fontSize: '14px', fontWeight: '800', color: p.score > 0 ? C.success : p.score < 0 ? C.danger : C.muted }}>
                       {p.score > 0 ? '+' : ''}{p.score}
                     </span>
@@ -694,8 +838,6 @@ function LeaderboardView({ profiles, tasks }) {
             ))}
           </div>
         </div>
-
-        {/* Calendar / Upcoming deadlines */}
         <div>
           <div style={{ background: C.surface, borderRadius: '20px', border: `1.5px solid ${C.border}`, overflow: 'hidden', boxShadow: '0 2px 8px rgba(27,58,107,0.07)' }}>
             <div style={{ padding: '16px 20px', borderBottom: `1px solid ${C.border}`, background: `linear-gradient(to right, ${C.navy}, ${C.blue})`, display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -714,12 +856,8 @@ function LeaderboardView({ profiles, tasks }) {
                 return (
                   <div key={task.id} style={{ padding: '12px 20px', borderBottom: `1px solid ${C.border}`, display: 'flex', gap: 12, alignItems: 'flex-start' }}>
                     <div style={{ flexShrink: 0, width: 52, height: 52, borderRadius: '12px', background: urg.bg, border: `1.5px solid ${urg.border}`, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-                      <div style={{ fontSize: '16px', fontWeight: '900', color: urg.color, lineHeight: 1 }}>
-                        {task.dueDate.getDate()}
-                      </div>
-                      <div style={{ fontSize: '9px', fontWeight: '700', color: urg.color, textTransform: 'uppercase' }}>
-                        {task.dueDate.toLocaleString('es-PE', { month: 'short' })}
-                      </div>
+                      <div style={{ fontSize: '16px', fontWeight: '900', color: urg.color, lineHeight: 1 }}>{task.dueDate.getDate()}</div>
+                      <div style={{ fontSize: '9px', fontWeight: '700', color: urg.color, textTransform: 'uppercase' }}>{task.dueDate.toLocaleString('es-PE', { month: 'short' })}</div>
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: '13px', fontWeight: '700', color: C.navy, marginBottom: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{task.title}</div>
@@ -730,9 +868,7 @@ function LeaderboardView({ profiles, tasks }) {
                             <span style={{ fontSize: '10px', color: C.muted }}>{assignee.full_name.split(' ')[0]}</span>
                           </div>
                         )}
-                        <span style={{ fontSize: '10px', fontWeight: '700', color: urg.color, background: urg.bg, padding: '1px 7px', borderRadius: '10px', border: `1px solid ${urg.border}` }}>
-                          {urg.label}
-                        </span>
+                        <span style={{ fontSize: '10px', fontWeight: '700', color: urg.color, background: urg.bg, padding: '1px 7px', borderRadius: '10px', border: `1px solid ${urg.border}` }}>{urg.label}</span>
                       </div>
                     </div>
                   </div>
@@ -740,8 +876,6 @@ function LeaderboardView({ profiles, tasks }) {
               })}
             </div>
           </div>
-
-          {/* Mini stats */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 16 }}>
             {[
               { label: 'Promedio equipo', value: scores.length > 0 ? (scores.reduce((a, s) => a + s.score, 0) / scores.length).toFixed(1) : '0', color: C.blue, icon: BarChart2 },
@@ -812,7 +946,6 @@ function TeamView({ profiles, tasks, currentUserId, onAssignTask }) {
               {isMe && <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={e => handlePhotoUpload(currentUserId, e.target.files[0])} />}
               <div style={{ fontSize: '15px', fontWeight: '800', color: C.navy, marginBottom: 3 }}>{profile.full_name}</div>
               <div style={{ fontSize: '11px', color: C.muted, marginBottom: 10, padding: '3px 10px', background: C.bg, borderRadius: '20px', display: 'inline-block', border: `1px solid ${C.border}` }}>{profile.cargo || 'Colaborador'}</div>
-
               <div style={{ marginBottom: 14, padding: '10px 12px', background: C.bg, borderRadius: '12px', border: `1px solid ${C.border}` }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
                   <span style={{ fontSize: '10px', fontWeight: '700', color: C.muted, letterSpacing: '0.04em', textTransform: 'uppercase' }}>Cumplimiento</span>
@@ -823,7 +956,6 @@ function TeamView({ profiles, tasks, currentUserId, onAssignTask }) {
                 </div>
                 <div style={{ fontSize: '10px', color: C.mutedLt, marginTop: 5 }}>{completed} completadas de {received} recibidas</div>
               </div>
-
               <button onClick={() => onAssignTask(profile.id)}
                 style={{ width: '100%', padding: '8px 0', borderRadius: '12px', border: 'none', background: `linear-gradient(135deg, ${C.navy} 0%, ${C.blue} 100%)`, color: '#fff', fontSize: '12px', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, boxShadow: '0 3px 10px rgba(37,99,235,0.25)', transition: 'opacity 0.15s' }}
                 onMouseEnter={e => e.currentTarget.style.opacity = '0.85'}
@@ -846,6 +978,7 @@ export default function App() {
   const [tasks,         setTasks]         = useState([]);
   const [notifications, setNotifications] = useState([]);
   const [showNotifs,    setShowNotifs]    = useState(false);
+  const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showNewTask,   setShowNewTask]   = useState(false);
   const [preAssignTo,   setPreAssignTo]   = useState(null);
   const [activeTab,     setActiveTab]     = useState('mine');
@@ -878,8 +1011,20 @@ export default function App() {
     const notifSub = supabase.channel('notifs_' + session.user.id)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${session.user.id}` },
         payload => setNotifications(prev => [payload.new, ...prev])).subscribe();
+    // ── FIX: realtime listener now merges updates instead of reloading all tasks
+    // This prevents race conditions where optimistic updates get overwritten
     const taskSub = supabase.channel('tasks_global')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, () => loadTasks()).subscribe();
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'tasks' },
+        payload => setTasks(prev => [payload.new, ...prev.filter(t => t.id !== payload.new.id)]))
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'tasks' },
+  payload => setTasks(prev => prev.map(t => 
+    t.id === payload.new.id 
+      ? { ...t, ...payload.new }  // merge en lugar de reemplazar
+      : t
+  )))
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'tasks' },
+        payload => setTasks(prev => prev.filter(t => t.id !== payload.old.id)))
+      .subscribe();
     return () => { supabase.removeChannel(notifSub); supabase.removeChannel(taskSub); };
   }, [session]);
 
@@ -888,20 +1033,53 @@ export default function App() {
   const loadTasks         = async () => { const { data } = await supabase.from('tasks').select('*').order('created_at', { ascending: false }); if (data) setTasks(data); };
   const loadNotifications = async () => { const { data } = await supabase.from('notifications').select('*').eq('user_id', session.user.id).order('created_at', { ascending: false }).limit(25); if (data) setNotifications(data); };
 
+  // ── FIX: handleStatusChange now awaits the DB update and verifies success
+  // before updating local state, ensuring persistence survives page reloads
   const handleStatusChange = async (taskId, newStatus) => {
-    const upd = { status: newStatus };
-    if (newStatus === 'completed') upd.completed_at = new Date().toISOString();
-    await supabase.from('tasks').update(upd).eq('id', taskId);
+    const completedAt = newStatus === 'completed' ? new Date().toISOString() : null;
+    const upd = newStatus === 'completed'
+      ? { status: newStatus, completed_at: completedAt }
+      : { status: newStatus };
+
+    // Optimistic update first for instant UI feedback
     setTasks(prev => prev.map(t => t.id === taskId ? { ...t, ...upd } : t));
+
+    // Then persist to Supabase and verify
+    const { data, error } = await supabase
+      .from('tasks')
+      .update(upd)
+      .eq('id', taskId)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error updating task status:', error);
+      // Revert optimistic update on failure
+      loadTasks();
+      return;
+    }
+    // Sync with what DB actually saved
+    if (data) {
+      setTasks(prev => prev.map(t => t.id === taskId ? data : t));
+    }
   };
+
   const handleDelete = async (taskId) => {
     if (!window.confirm('¿Eliminar este ticket?')) return;
-    await supabase.from('tasks').delete().eq('id', taskId);
     setTasks(prev => prev.filter(t => t.id !== taskId));
+    const { error } = await supabase.from('tasks').delete().eq('id', taskId);
+    if (error) { console.error('Error deleting task:', error); loadTasks(); }
   };
+
   const markNotifsRead = async () => {
     await supabase.from('notifications').update({ read: true }).eq('user_id', session.user.id).eq('read', false);
     setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+  };
+
+  // Handler for profile updates from ProfileMenu
+  const handleProfileUpdated = (updatedProfile) => {
+    setProfile(updatedProfile);
+    setProfiles(prev => prev.map(p => p.id === updatedProfile.id ? updatedProfile : p));
   };
 
   // ── AUTH ──────────────────────────────────────────────────────────────────
@@ -940,7 +1118,6 @@ export default function App() {
       options: { data: { first_name: firstName.trim(), last_name: lastName.trim(), cargo: cargo.trim(), full_name: `${firstName.trim()} ${lastName.trim()}` } },
     });
     if (err) { setAuthError(err.message); setFormLoading(false); return; }
-    // Switch to login, prefill email, show success
     setAuthMode('login');
     setLoginEmail(email);
     setPassword('');
@@ -957,7 +1134,6 @@ export default function App() {
   };
 
   // ── DERIVED ───────────────────────────────────────────────────────────────
-  // Stats only from MY tasks (assigned_to === me)
   const myTasks      = tasks.filter(t => t.assigned_to === session?.user.id);
   const myPending    = myTasks.filter(t => t.status !== 'completed').length;
   const myCompleted  = myTasks.filter(t => t.status === 'completed').length;
@@ -990,16 +1166,16 @@ export default function App() {
   // DASHBOARD
   // =========================================================================
   if (session) {
-    const isTeamView      = activeTab === 'team';
-    const isLeaderboard   = activeTab === 'analytics';
+    const isTeamView    = activeTab === 'team';
+    const isLeaderboard = activeTab === 'analytics';
 
     const TAB_CONFIG = [
-      { id: 'mine',      label: 'Mis Pendientes', icon: Clock,          highlight: true  },
-      { id: 'all',       label: 'Todas',          icon: LayoutDashboard, highlight: false },
-      { id: 'created',   label: 'Creadas por mí', icon: Briefcase,      highlight: false },
-      { id: 'completed', label: 'Completadas',    icon: CheckCircle2,   highlight: false },
-      { id: 'team',      label: 'Equipo',         icon: Users,          highlight: false },
-      { id: 'analytics', label: 'Analítica',      icon: Trophy,         highlight: false },
+      { id: 'mine',      label: 'Mis Pendientes', icon: Clock          },
+      { id: 'all',       label: 'Todas',          icon: LayoutDashboard },
+      { id: 'created',   label: 'Creadas por mí', icon: Briefcase      },
+      { id: 'completed', label: 'Completadas',    icon: CheckCircle2   },
+      { id: 'team',      label: 'Equipo',         icon: Users          },
+      { id: 'analytics', label: 'Analítica',      icon: Trophy         },
     ];
 
     return (
@@ -1018,14 +1194,8 @@ export default function App() {
         {/* NAVBAR */}
         <header style={{ width: '100%', height: '64px', background: C.surface, borderBottom: `1.5px solid ${C.border}`, padding: '0 28px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'sticky', top: 0, zIndex: 100, boxShadow: '0 2px 12px rgba(27,58,107,0.08)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            {/* Logo from URL — replace LOGO_URL constant to change it */}
             <div style={{ width: 36, height: 36, borderRadius: '10px', overflow: 'hidden', border: `1.5px solid ${C.border}`, flexShrink: 0 }}>
-              <img
-                src={LOGO_URL}
-                alt="Logo"
-                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                onError={e => { e.target.style.display = 'none'; }}
-              />
+              <img src={LOGO_URL} alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={e => { e.target.style.display = 'none'; }} />
             </div>
             <div>
               <span style={{ fontWeight: '800', fontSize: '15px', color: C.navy }}>Hanter</span>
@@ -1034,8 +1204,9 @@ export default function App() {
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            {/* Notifications */}
             <div style={{ position: 'relative' }}>
-              <button onClick={() => { setShowNotifs(v => !v); if (!showNotifs) markNotifsRead(); }}
+              <button onClick={() => { setShowNotifs(v => !v); setShowProfileMenu(false); if (!showNotifs) markNotifsRead(); }}
                 style={{ position: 'relative', background: C.bg, border: `1.5px solid ${C.border}`, borderRadius: '10px', padding: '7px', cursor: 'pointer', color: C.navy, display: 'flex', transition: 'all 0.15s' }}
                 onMouseEnter={e => e.currentTarget.style.borderColor = C.accent}
                 onMouseLeave={e => e.currentTarget.style.borderColor = C.border}>
@@ -1063,13 +1234,37 @@ export default function App() {
               )}
             </div>
 
+            {/* Profile button — clickable, shows ProfileMenu */}
             {profile && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 12px 5px 5px', borderRadius: '100px', border: `1.5px solid ${C.border}`, background: C.bg }}>
-                <Avatar name={profile.full_name} size={30} photoUrl={profile.avatar_url} />
-                <div style={{ lineHeight: '1.2' }}>
-                  <div style={{ fontSize: '12px', fontWeight: '700', color: C.navy }}>{profile.full_name}</div>
-                  <div style={{ fontSize: '10px', color: C.muted }}>{profile.cargo}</div>
-                </div>
+              <div style={{ position: 'relative' }}>
+                <button
+                  onClick={() => { setShowProfileMenu(v => !v); setShowNotifs(false); }}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 8,
+                    padding: '5px 10px 5px 5px', borderRadius: '100px',
+                    border: `1.5px solid ${showProfileMenu ? C.blue : C.border}`,
+                    background: showProfileMenu ? C.accentLt : C.bg,
+                    cursor: 'pointer', transition: 'all 0.15s',
+                  }}
+                  onMouseEnter={e => { if (!showProfileMenu) { e.currentTarget.style.borderColor = C.accent; e.currentTarget.style.background = C.accentLt; } }}
+                  onMouseLeave={e => { if (!showProfileMenu) { e.currentTarget.style.borderColor = C.border; e.currentTarget.style.background = C.bg; } }}
+                >
+                  <Avatar name={profile.full_name} size={30} photoUrl={profile.avatar_url} />
+                  <div style={{ lineHeight: '1.2', textAlign: 'left' }}>
+                    <div style={{ fontSize: '12px', fontWeight: '700', color: C.navy }}>{profile.full_name}</div>
+                    <div style={{ fontSize: '10px', color: C.muted }}>{profile.cargo}</div>
+                  </div>
+                  <ChevronDown size={12} color={C.muted} style={{ marginLeft: 2, transform: showProfileMenu ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }} />
+                </button>
+
+                {showProfileMenu && (
+                  <ProfileMenu
+                    profile={profile}
+                    currentUserId={session.user.id}
+                    onClose={() => setShowProfileMenu(false)}
+                    onProfileUpdated={handleProfileUpdated}
+                  />
+                )}
               </div>
             )}
 
@@ -1084,43 +1279,33 @@ export default function App() {
 
         {/* MAIN */}
         <main style={{ maxWidth: '1300px', margin: '0 auto', padding: '32px 28px', animation: 'fadeUp 0.4s ease-out' }}>
-
-          {/* TABS + STAT CARDS in same row */}
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: 20, marginBottom: 28, flexWrap: 'wrap' }}>
             {/* Tab navigation */}
             <div style={{ background: C.surface, borderRadius: '14px', padding: '5px', display: 'flex', flexDirection: 'column', gap: 3, border: `1.5px solid ${C.border}`, boxShadow: '0 2px 8px rgba(27,58,107,0.07)', minWidth: 180, flexShrink: 0 }}>
-              {TAB_CONFIG.map(({ id, label, icon: Ic, highlight }) => (
+              {TAB_CONFIG.map(({ id, label, icon: Ic }) => (
                 <button key={id} onClick={() => setActiveTab(id)}
                   style={{
                     padding: '9px 14px', borderRadius: '10px', border: 'none',
-                    background: activeTab === id
-                      ? `linear-gradient(135deg, ${C.navy} 0%, ${C.blue} 100%)`
-                      : 'transparent',
+                    background: activeTab === id ? `linear-gradient(135deg, ${C.navy} 0%, ${C.blue} 100%)` : 'transparent',
                     color: activeTab === id ? '#fff' : C.muted,
                     fontWeight: activeTab === id ? '700' : '500',
-                    fontSize: '12px', cursor: 'pointer',
-                    transition: 'all 0.15s',
-                    display: 'flex', alignItems: 'center', gap: 8,
-                    textAlign: 'left',
+                    fontSize: '12px', cursor: 'pointer', transition: 'all 0.15s',
+                    display: 'flex', alignItems: 'center', gap: 8, textAlign: 'left',
                     boxShadow: activeTab === id ? '0 3px 10px rgba(37,99,235,0.25)' : 'none',
                   }}
                   onMouseEnter={e => { if (activeTab !== id) { e.currentTarget.style.background = C.accentLt; e.currentTarget.style.color = C.navy; } }}
                   onMouseLeave={e => { if (activeTab !== id) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = C.muted; } }}
                 >
-                  <Ic size={13} />
-                  {label}
+                  <Ic size={13} />{label}
                 </button>
               ))}
             </div>
 
             {/* Stat cards + New task button */}
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 14, minWidth: 0 }}>
-              {/* New task button + greeting */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
-                  <div style={{ fontSize: '11px', color: C.muted, fontWeight: '500', marginBottom: 2 }}>
-                    {profile?.cargo}
-                  </div>
+                  <div style={{ fontSize: '11px', color: C.muted, fontWeight: '500', marginBottom: 2 }}>{profile?.cargo}</div>
                 </div>
                 <button onClick={() => { setPreAssignTo(null); setShowNewTask(true); }}
                   style={{ padding: '10px 22px', background: `linear-gradient(135deg, ${C.navy} 0%, ${C.blue} 100%)`, color: '#fff', border: 'none', borderRadius: '20px', fontSize: '13px', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, boxShadow: '0 4px 16px rgba(37,99,235,0.30)', transition: 'all 0.15s', flexShrink: 0 }}
@@ -1129,36 +1314,10 @@ export default function App() {
                   <Plus size={16} /> Nueva Tarea
                 </button>
               </div>
-
-              {/* Stats row */}
               <div style={{ display: 'flex', gap: 14 }}>
-                <StatCard
-                  icon={Clock}
-                  label="Mis Pendientes"
-                  value={myPending}
-                  iconColor={C.accent}
-                  iconBg={C.accentLt}
-                  accent={C.accent}
-                  sublabel="tareas sin completar"
-                />
-                <StatCard
-                  icon={CheckCircle2}
-                  label="Completadas"
-                  value={myCompleted}
-                  iconColor={C.success}
-                  iconBg={C.successLt}
-                  accent={C.success}
-                  sublabel="tareas finalizadas"
-                />
-                <StatCard
-                  icon={AlertCircle}
-                  label="Vencidas"
-                  value={overdueCount}
-                  iconColor={C.danger}
-                  iconBg={C.dangerLt}
-                  accent={C.danger}
-                  sublabel="requieren atención"
-                />
+                <StatCard icon={Clock} label="Mis Pendientes" value={myPending} iconColor={C.accent} iconBg={C.accentLt} accent={C.accent} sublabel="tareas sin completar" />
+                <StatCard icon={CheckCircle2} label="Completadas" value={myCompleted} iconColor={C.success} iconBg={C.successLt} accent={C.success} sublabel="tareas finalizadas" />
+                <StatCard icon={AlertCircle} label="Vencidas" value={overdueCount} iconColor={C.danger} iconBg={C.dangerLt} accent={C.danger} sublabel="requieren atención" />
               </div>
             </div>
           </div>
@@ -1214,7 +1373,7 @@ export default function App() {
           <TaskDetailModal task={selectedTask} profiles={profiles} currentUserId={session.user.id}
             onClose={() => setSelectedTask(null)} onStatusChange={handleStatusChange} onDelete={handleDelete} />
         )}
-        {showNotifs && <div style={{ position: 'fixed', inset: 0, zIndex: 99 }} onClick={() => setShowNotifs(false)} />}
+        {showNotifs && <div style={{ position: 'fixed', inset: 0, zIndex: 99 }} onClick={() => { setShowNotifs(false); }} />}
       </div>
     );
   }
@@ -1225,8 +1384,7 @@ export default function App() {
   const darkInp = {
     width: '100%', height: '46px', padding: '0 16px',
     borderRadius: '10px', border: `1.5px solid rgba(0,0,0,0.12)`,
-    background: '#fff',
-    color: C.navy,
+    background: '#fff', color: C.navy,
     fontSize: '14px', outline: 'none', boxSizing: 'border-box',
     fontFamily: "'Sora', sans-serif", transition: 'border-color 0.15s, box-shadow 0.15s',
   };
@@ -1245,21 +1403,13 @@ export default function App() {
         .auth-tab{transition:all 0.2s}
       `}</style>
 
-      {/* Background image with black overlay — background stays visible, overlay is pure black with high opacity */}
-      <div style={{
-        position: 'absolute', inset: 0,
-        backgroundImage: `url(${BG_IMAGE})`,
-        backgroundSize: 'cover', backgroundPosition: 'center',
-        filter: 'brightness(0.35) saturate(0.6)',
-      }} />
-      {/* Extra pure black vignette */}
+      <div style={{ position: 'absolute', inset: 0, backgroundImage: `url(${BG_IMAGE})`, backgroundSize: 'cover', backgroundPosition: 'center', filter: 'brightness(0.35) saturate(0.6)' }} />
       <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(ellipse at center, rgba(0,0,0,0.3) 0%, rgba(0,0,0,0.75) 100%)' }} />
 
       <div style={{ position: 'relative', zIndex: 10, width: '100%', display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: '40px 64px', maxWidth: '1200px', margin: '0 auto', gap: '64px' }}>
         {/* Left copy */}
         <div style={{ flex: 1, color: '#fff', maxWidth: '480px', animation: 'fadeUp 0.5s ease-out' }}>
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: 'rgba(91,155,213,0.15)', border: '1px solid rgba(91,155,213,0.3)', borderRadius: '100px', padding: '5px 14px', marginBottom: 24 }}>
-      
             <span style={{ fontSize: '11px', fontWeight: '700', color: C.accent, letterSpacing: '0.12em', textTransform: 'uppercase' }}>Bienvenido a</span>
           </div>
           <h1 style={{ margin: '0 0 4px', fontSize: '64px', fontWeight: '900', lineHeight: '1', letterSpacing: '-0.04em', color: '#fff' }}>Hanter</h1>
@@ -1269,9 +1419,8 @@ export default function App() {
           </p>
         </div>
 
-        {/* Auth card — WHITE body */}
+        {/* Auth card */}
         <div style={{ width: '100%', maxWidth: '420px', background: '#ffffff', backdropFilter: 'blur(24px)', borderRadius: '24px', border: '1px solid rgba(0,0,0,0.08)', boxShadow: '0 32px 80px rgba(0,0,0,0.5)', overflow: 'hidden', animation: 'fadeUp 0.5s ease-out 0.1s both' }}>
-          {/* Tabs */}
           <div style={{ display: 'flex', borderBottom: `1px solid ${C.border}` }}>
             {[['login', 'Ingresar'], ['signup', 'Crear cuenta']].map(([mode, label]) => (
               <button key={mode} className="auth-tab" onClick={() => { setAuthMode(mode); resetForm(); }}
@@ -1306,7 +1455,6 @@ export default function App() {
                     {fieldErrors.username && <p style={{ margin: '3px 0 0', fontSize: '10px', color: C.danger }}>{fieldErrors.username}</p>}
                     <p style={{ margin: '4px 0 0', fontSize: '10px', color: C.muted }}>Tu correo será: {username || 'usuario'}{DOMAIN}</p>
                   </div>
-
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                     <div>
                       <label style={darkLbl}>Nombres *</label>
@@ -1323,7 +1471,6 @@ export default function App() {
                       {fieldErrors.lastName && <p style={{ margin: '3px 0 0', fontSize: '10px', color: C.danger }}>{fieldErrors.lastName}</p>}
                     </div>
                   </div>
-
                   <div>
                     <label style={darkLbl}>Cargo *</label>
                     <input list="cargo-opts" className="dark-input" style={{ ...darkInp, ...(fieldErrors.cargo ? errBorder : {}) }}
@@ -1372,3 +1519,32 @@ export default function App() {
     </div>
   );
 }
+
+const handleStatusChange = async (taskId, newStatus) => {
+  const completedAt = newStatus === 'completed' ? new Date().toISOString() : null;
+  const upd = newStatus === 'completed'
+    ? { status: newStatus, completed_at: completedAt }
+    : { status: newStatus };
+
+  setTasks(prev => prev.map(t => t.id === taskId ? { ...t, ...upd } : t));
+
+  const { data, error } = await supabase
+    .from('tasks')
+    .update(upd)
+    .eq('id', taskId)
+    .select()
+    .single();
+
+  // AGREGA ESTAS 2 LÍNEAS:
+  console.log('UPDATE result → data:', data);
+  console.log('UPDATE result → error:', error);
+
+  if (error) {
+    console.error('Error updating task status:', error);
+    loadTasks();
+    return;
+  }
+  if (data) {
+    setTasks(prev => prev.map(t => t.id === taskId ? data : t));
+  }
+};
