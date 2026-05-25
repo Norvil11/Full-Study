@@ -1092,7 +1092,7 @@ function DMConversation({ otherUser, currentUserId, currentProfile, onBack }) {
         </button>
         <div style={{ position: 'relative', flexShrink: 0 }}>
           <Avatar name={otherUser.full_name} size={38} photoUrl={otherUser.avatar_url} />
-          <div style={{ position: 'absolute', bottom: 0, right: 0, width: 10, height: 10, borderRadius: '50%', background: C.success, border: '2px solid #fff' }} />
+         
         </div>
         <div>
           <div style={{ fontSize: '14px', fontWeight: '800', color: C.navy }}>{otherUser.full_name}</div>
@@ -1265,7 +1265,7 @@ function ChatView({ profiles, currentUserId, currentProfile }) {
               onMouseLeave={e => { if (selectedUser?.id !== p.id) e.currentTarget.style.background = 'transparent'; }}>
               <div style={{ position: 'relative', flexShrink: 0 }}>
                 <Avatar name={p.full_name} size={34} photoUrl={p.avatar_url} />
-                <div style={{ position: 'absolute', bottom: 0, right: 0, width: 9, height: 9, borderRadius: '50%', background: C.success, border: '2px solid #fff' }} />
+               
               </div>
               <div style={{ minWidth: 0, flex: 1 }}>
                 <div style={{ fontSize: '12px', fontWeight: '700', color: selectedUser?.id === p.id ? C.navy : C.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.full_name}</div>
