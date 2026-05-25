@@ -9,7 +9,8 @@ import {
   Upload, Paperclip, ExternalLink, ChevronRight,
   Camera, TrendingUp, BarChart2, Target, Trophy,
   Medal, Crown, Star, ChevronUp, ChevronDown,
-  Settings, User, Edit2, Save, ChevronDown as Chevron,
+  Settings, User, Edit2, Save, MessageCircle,
+  Hash, Smile, MoreVertical, Trash, ArrowLeft,
 } from 'lucide-react';
 import logoHS from './LOGO_HS_SF.png';
 
@@ -69,10 +70,20 @@ const STATUS_COLS = [
   { status: 'completed',   label: 'Completado', dot: C.success,  tag: C.successLt, tagText: C.success },
 ];
 
+// Solo para "Mis Pendientes" — sin columna completado
+const STATUS_COLS_MINE = [
+  { status: 'pending',     label: 'Por Hacer',  dot: C.mutedLt,  tag: '#F1F5F9',   tagText: C.muted   },
+  { status: 'in_progress', label: 'En Proceso', dot: C.blue,     tag: C.accentLt,  tagText: C.navy    },
+];
+
 // ─── HELPERS ─────────────────────────────────────────────────────────────────
 function formatDate(d) {
   if (!d) return '—';
   return new Date(d).toLocaleDateString('es-PE', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+function formatTime(d) {
+  if (!d) return '';
+  return new Date(d).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' });
 }
 function isOverdue(due, status) {
   if (!due || status === 'completed') return false;
@@ -116,7 +127,7 @@ function Chip({ children, color, bg, border }) {
 
 // ─── PROFILE MENU ─────────────────────────────────────────────────────────────
 function ProfileMenu({ profile, currentUserId, onClose, onProfileUpdated }) {
-  const [tab, setTab] = useState('info'); // 'info' | 'edit'
+  const [tab, setTab] = useState('info');
   const [editForm, setEditForm] = useState({
     first_name: profile?.first_name || '',
     last_name: profile?.last_name || '',
@@ -172,9 +183,7 @@ function ProfileMenu({ profile, currentUserId, onClose, onProfileUpdated }) {
 
   return (
     <>
-      {/* Backdrop */}
       <div style={{ position: 'fixed', inset: 0, zIndex: 199 }} onClick={onClose} />
-      {/* Menu */}
       <div style={{
         position: 'absolute', right: 0, top: 'calc(100% + 10px)',
         background: C.surface, borderRadius: '20px', width: '300px',
@@ -183,7 +192,6 @@ function ProfileMenu({ profile, currentUserId, onClose, onProfileUpdated }) {
         overflow: 'hidden', zIndex: 200,
         animation: 'slideDown 0.15s ease-out',
       }}>
-        {/* Header with avatar */}
         <div style={{ background: `linear-gradient(135deg, ${C.navy} 0%, ${C.blue} 100%)`, padding: '20px', textAlign: 'center', position: 'relative' }}>
           <div style={{ position: 'relative', display: 'inline-block', marginBottom: 10 }}>
             <Avatar name={profile?.full_name || ''} size={64} photoUrl={profile?.avatar_url} />
@@ -201,7 +209,6 @@ function ProfileMenu({ profile, currentUserId, onClose, onProfileUpdated }) {
           </div>
         </div>
 
-        {/* Tabs */}
         <div style={{ display: 'flex', borderBottom: `1px solid ${C.border}` }}>
           {[['info', 'Mi perfil', User], ['edit', 'Editar', Edit2]].map(([id, label, Ic]) => (
             <button key={id} onClick={() => { setTab(id); setSaveMsg(''); setSaveErr(''); }}
@@ -970,8 +977,342 @@ function TeamView({ profiles, tasks, currentUserId, onAssignTask }) {
   );
 }
 
+// ─── DIRECT MESSAGE CONVERSATION ─────────────────────────────────────────────
+function DMConversation({ otherUser, currentUserId, currentProfile, onBack }) {
+  const [messages, setMessages] = useState([]);
+  const [text, setText]         = useState('');
+  const [loading, setLoading]   = useState(true);
+  const [sending, setSending]   = useState(false);
+  const [hoveredMsg, setHoveredMsg] = useState(null);
+  const bottomRef = useRef();
+  const inputRef  = useRef();
+
+  // Unique channel key: sorted IDs so A→B and B→A share same conversation
+  const channelKey = [currentUserId, otherUser.id].sort().join('_');
+
+  useEffect(() => {
+    const load = async () => {
+      setLoading(true);
+      const { data } = await supabase
+        .from('direct_messages')
+        .select('*')
+        .or(
+          `and(sender_id.eq.${currentUserId},receiver_id.eq.${otherUser.id}),and(sender_id.eq.${otherUser.id},receiver_id.eq.${currentUserId})`
+        )
+        .order('created_at', { ascending: true })
+        .limit(200);
+      if (data) setMessages(data);
+
+      // Marcar como leídos los mensajes recibidos
+      await supabase
+        .from('direct_messages')
+        .update({ read: true })
+        .eq('receiver_id', currentUserId)
+        .eq('sender_id', otherUser.id)
+        .eq('read', false);
+
+      setLoading(false);
+    };
+    load();
+
+    const sub = supabase.channel(`dm_${channelKey}`)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'direct_messages' },
+        payload => {
+          const m = payload.new;
+          const relevant = (m.sender_id === currentUserId && m.receiver_id === otherUser.id) ||
+                           (m.sender_id === otherUser.id && m.receiver_id === currentUserId);
+          if (!relevant) return;
+          setMessages(prev => {
+            if (prev.find(x => x.id === m.id)) return prev;
+            return [...prev, m];
+          });
+        })
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'direct_messages' },
+        payload => setMessages(prev => prev.filter(m => m.id !== payload.old.id)))
+      .subscribe();
+
+    return () => supabase.removeChannel(sub);
+  }, [otherUser.id]);
+
+  useEffect(() => {
+    if (!loading) bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, loading]);
+
+  const handleSend = async () => {
+    const trimmed = text.trim();
+    if (!trimmed || sending) return;
+    setSending(true);
+    setText('');
+    const { error } = await supabase.from('direct_messages').insert([{
+      sender_id: currentUserId,
+      receiver_id: otherUser.id,
+      content: trimmed,
+    }]);
+    if (error) { console.error('Error sending DM:', error); setText(trimmed); }
+    setSending(false);
+    inputRef.current?.focus();
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
+  };
+
+  const handleDelete = async (msgId) => {
+    await supabase.from('direct_messages').delete().eq('id', msgId);
+  };
+
+  // Group by date
+  const items = (() => {
+    const groups = [];
+    let lastDate = null;
+    messages.forEach(msg => {
+      const d = new Date(msg.created_at).toLocaleDateString('es-PE', { weekday: 'long', day: 'numeric', month: 'long' });
+      if (d !== lastDate) { groups.push({ type: 'date', label: d }); lastDate = d; }
+      groups.push({ type: 'msg', data: msg });
+    });
+    return groups;
+  })();
+
+  const isConsecutive = (idx) => {
+    if (idx === 0) return false;
+    const prev = items[idx - 1];
+    const curr = items[idx];
+    if (prev.type === 'date' || curr.type === 'date') return false;
+    return prev.data?.sender_id === curr.data?.sender_id;
+  };
+
+  return (
+    <div style={{ flex: 1, background: C.surface, borderRadius: '20px', border: `1.5px solid ${C.border}`, boxShadow: '0 2px 8px rgba(27,58,107,0.07)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      {/* Header */}
+      <div style={{ padding: '14px 20px', borderBottom: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', gap: 12, background: C.surface }}>
+        <button onClick={onBack} style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: '8px', padding: '6px', cursor: 'pointer', color: C.muted, display: 'flex', flexShrink: 0 }}
+          onMouseEnter={e => { e.currentTarget.style.background = C.accentLt; e.currentTarget.style.color = C.navy; }}
+          onMouseLeave={e => { e.currentTarget.style.background = C.bg; e.currentTarget.style.color = C.muted; }}>
+          <ArrowLeft size={14} />
+        </button>
+        <div style={{ position: 'relative', flexShrink: 0 }}>
+          <Avatar name={otherUser.full_name} size={38} photoUrl={otherUser.avatar_url} />
+          <div style={{ position: 'absolute', bottom: 0, right: 0, width: 10, height: 10, borderRadius: '50%', background: C.success, border: '2px solid #fff' }} />
+        </div>
+        <div>
+          <div style={{ fontSize: '14px', fontWeight: '800', color: C.navy }}>{otherUser.full_name}</div>
+          <div style={{ fontSize: '11px', color: C.muted }}>{otherUser.cargo}</div>
+        </div>
+      </div>
+
+      {/* Messages */}
+      <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px', display: 'flex', flexDirection: 'column' }}>
+        {loading ? (
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Loader2 size={24} color={C.accent} style={{ animation: 'spin 1s linear infinite' }} />
+          </div>
+        ) : messages.length === 0 ? (
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: C.mutedLt, gap: 12 }}>
+            <Avatar name={otherUser.full_name} size={56} photoUrl={otherUser.avatar_url} />
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: '14px', fontWeight: '700', color: C.muted, marginBottom: 4 }}>Inicia una conversación</div>
+              <div style={{ fontSize: '12px' }}>Escribe tu primer mensaje a {otherUser.full_name.split(' ')[0]}</div>
+            </div>
+          </div>
+        ) : (
+          items.map((item, idx) => {
+            if (item.type === 'date') {
+              return (
+                <div key={`date-${idx}`} style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '16px 0 8px' }}>
+                  <div style={{ flex: 1, height: 1, background: C.border }} />
+                  <span style={{ fontSize: '10px', fontWeight: '700', color: C.mutedLt, textTransform: 'capitalize', background: C.bg, padding: '3px 10px', borderRadius: '20px', border: `1px solid ${C.border}` }}>{item.label}</span>
+                  <div style={{ flex: 1, height: 1, background: C.border }} />
+                </div>
+              );
+            }
+            const msg = item.data;
+            const isMe = msg.sender_id === currentUserId;
+            const consecutive = isConsecutive(idx);
+            return (
+              <div key={msg.id}
+                style={{ display: 'flex', flexDirection: isMe ? 'row-reverse' : 'row', gap: 10, marginTop: consecutive ? 3 : 14, alignItems: 'flex-end' }}
+                onMouseEnter={() => setHoveredMsg(msg.id)}
+                onMouseLeave={() => setHoveredMsg(null)}>
+                <div style={{ width: 32, flexShrink: 0 }}>
+                  {!consecutive && (
+                    <Avatar name={isMe ? currentProfile?.full_name || '' : otherUser.full_name} size={32}
+                      photoUrl={isMe ? currentProfile?.avatar_url : otherUser.avatar_url} />
+                  )}
+                </div>
+                <div style={{ maxWidth: '65%', display: 'flex', flexDirection: 'column', alignItems: isMe ? 'flex-end' : 'flex-start' }}>
+                  {!consecutive && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3, flexDirection: isMe ? 'row-reverse' : 'row' }}>
+                      <span style={{ fontSize: '12px', fontWeight: '700', color: C.navy }}>{isMe ? 'Tú' : otherUser.full_name.split(' ')[0]}</span>
+                      <span style={{ fontSize: '10px', color: C.mutedLt }}>{formatTime(msg.created_at)}</span>
+                    </div>
+                  )}
+                  <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 6, flexDirection: isMe ? 'row-reverse' : 'row' }}>
+                    <div style={{
+                      padding: '9px 14px',
+                      borderRadius: consecutive
+                        ? (isMe ? '18px 6px 6px 18px' : '6px 18px 18px 6px')
+                        : (isMe ? '18px 6px 18px 18px' : '6px 18px 18px 18px'),
+                      background: isMe ? `linear-gradient(135deg, ${C.navy} 0%, ${C.blue} 100%)` : C.bg,
+                      color: isMe ? '#fff' : C.text,
+                      fontSize: '13px', lineHeight: '1.5',
+                      border: isMe ? 'none' : `1.5px solid ${C.border}`,
+                      boxShadow: isMe ? '0 2px 8px rgba(37,99,235,0.20)' : '0 1px 3px rgba(27,58,107,0.06)',
+                      wordBreak: 'break-word', whiteSpace: 'pre-wrap',
+                    }}>
+                      {msg.content}
+                    </div>
+                    {isMe && hoveredMsg === msg.id && (
+                      <button onClick={() => handleDelete(msg.id)}
+                        style={{ background: C.dangerLt, border: `1px solid #FECACA`, borderRadius: '6px', padding: '4px', cursor: 'pointer', color: C.danger, display: 'flex', flexShrink: 0 }}>
+                        <Trash2 size={11} />
+                      </button>
+                    )}
+                  </div>
+                  {consecutive && (
+                    <div style={{ fontSize: '9px', color: C.mutedLt, marginTop: 1 }}>{formatTime(msg.created_at)}</div>
+                  )}
+                </div>
+              </div>
+            );
+          })
+        )}
+        <div ref={bottomRef} />
+      </div>
+
+      {/* Input */}
+      <div style={{ padding: '14px 18px', borderTop: `1px solid ${C.border}`, background: C.surface }}>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', background: C.bg, borderRadius: '16px', border: `1.5px solid ${C.border}`, padding: '8px 8px 8px 16px', transition: 'border-color 0.15s' }}
+          onFocusCapture={e => e.currentTarget.style.borderColor = C.blue}
+          onBlurCapture={e => e.currentTarget.style.borderColor = C.border}>
+          <textarea ref={inputRef} value={text} onChange={e => setText(e.target.value)} onKeyDown={handleKeyDown}
+            placeholder={`Mensaje a ${otherUser.full_name.split(' ')[0]}...`} rows={1}
+            style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', resize: 'none', fontFamily: 'inherit', fontSize: '13px', color: C.text, lineHeight: '1.5', maxHeight: '120px', overflowY: 'auto', padding: '4px 0' }}
+            onInput={e => { e.target.style.height = 'auto'; e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px'; }} />
+          <button onClick={handleSend} disabled={!text.trim() || sending}
+            style={{ width: 38, height: 38, borderRadius: '12px', border: 'none', background: text.trim() && !sending ? `linear-gradient(135deg, ${C.navy} 0%, ${C.blue} 100%)` : C.border, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: text.trim() && !sending ? 'pointer' : 'not-allowed', flexShrink: 0, transition: 'all 0.15s', boxShadow: text.trim() && !sending ? '0 3px 10px rgba(37,99,235,0.25)' : 'none' }}>
+            {sending ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <Send size={14} />}
+          </button>
+        </div>
+        <div style={{ fontSize: '10px', color: C.mutedLt, marginTop: 5, paddingLeft: 4 }}>Enter para enviar · Shift+Enter para nueva línea</div>
+      </div>
+    </div>
+  );
+}
+// ─── CHAT VIEW (DM LIST) ──────────────────────────────────────────────────────
+function ChatView({ profiles, currentUserId, currentProfile }) {
+  const otherProfiles = profiles.filter(p => p.id !== currentUserId);
+  const [selectedUser, setSelectedUser] = useState(otherProfiles[0] || null);
+  const [unreadCounts, setUnreadCounts] = useState({});
+
+  // Cargar contadores de no leídos al iniciar y suscribirse a Realtime
+  useEffect(() => {
+    const fetchUnread = async () => {
+      const { data } = await supabase
+        .from('direct_messages')
+        .select('sender_id')
+        .eq('receiver_id', currentUserId)
+        .eq('read', false);
+
+      if (data) {
+        const counts = {};
+        data.forEach(msg => {
+          counts[msg.sender_id] = (counts[msg.sender_id] || 0) + 1;
+        });
+        setUnreadCounts(counts);
+      }
+    };
+    fetchUnread();
+
+    const sub = supabase.channel('global_unread_channel_' + currentUserId)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'direct_messages' },
+        () => {
+          // Recargar directamente de la base de datos ante cualquier cambio
+          fetchUnread();
+        })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(sub);
+    };
+  }, [currentUserId, selectedUser]);
+
+  // Limpiar instantáneamente el contador del usuario al seleccionarlo
+  useEffect(() => {
+    if (selectedUser) {
+      setUnreadCounts(prev => ({
+        ...prev,
+        [selectedUser.id]: 0
+      }));
+    }
+  }, [selectedUser]);
+
+  return (
+    <div style={{ animation: 'fadeUp 0.3s ease-out', height: 'calc(100vh - 220px)', display: 'flex', gap: 20 }}>
+      {/* Sidebar */}
+      <div style={{ width: 240, flexShrink: 0, background: C.surface, borderRadius: '20px', border: `1.5px solid ${C.border}`, overflow: 'hidden', boxShadow: '0 2px 8px rgba(27,58,107,0.07)', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ padding: '16px 18px', borderBottom: `1px solid ${C.border}`, background: `linear-gradient(135deg, ${C.navy} 0%, ${C.blue} 100%)` }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <MessageCircle size={14} color="rgba(255,255,255,0.7)" />
+            <span style={{ fontSize: '13px', fontWeight: '700', color: '#fff' }}>Mensajes directos</span>
+          </div>
+          <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.5)', marginTop: 2 }}>{otherProfiles.length} contactos</div>
+        </div>
+        <div style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
+          {otherProfiles.map(p => (
+            <div key={p.id} onClick={() => setSelectedUser(p)}
+              style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px', cursor: 'pointer', transition: 'background 0.15s', background: selectedUser?.id === p.id ? C.accentLt : 'transparent', borderLeft: selectedUser?.id === p.id ? `3px solid ${C.blue}` : '3px solid transparent' }}
+              onMouseEnter={e => { if (selectedUser?.id !== p.id) e.currentTarget.style.background = C.bg; }}
+              onMouseLeave={e => { if (selectedUser?.id !== p.id) e.currentTarget.style.background = 'transparent'; }}>
+              <div style={{ position: 'relative', flexShrink: 0 }}>
+                <Avatar name={p.full_name} size={34} photoUrl={p.avatar_url} />
+                <div style={{ position: 'absolute', bottom: 0, right: 0, width: 9, height: 9, borderRadius: '50%', background: C.success, border: '2px solid #fff' }} />
+              </div>
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div style={{ fontSize: '12px', fontWeight: '700', color: selectedUser?.id === p.id ? C.navy : C.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.full_name}</div>
+                <div style={{ fontSize: '10px', color: C.mutedLt, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.cargo?.split(' ').slice(0, 2).join(' ')}</div>
+              </div>
+              {/* Globo indicador de mensajes no leídos (se oculta si es el chat activo) */}
+              {unreadCounts[p.id] > 0 && selectedUser?.id !== p.id && (
+                <div style={{
+                  background: C.danger,
+                  color: '#fff',
+                  borderRadius: '50%',
+                  minWidth: '18px',
+                  height: '18px',
+                  padding: '0 5px',
+                  fontSize: '9px',
+                  fontWeight: '700',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  marginLeft: 6
+                }}>
+                  {unreadCounts[p.id]}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+      
+      {selectedUser ? (
+        <DMConversation
+          otherUser={selectedUser}
+          currentUserId={currentUserId}
+          currentProfile={currentProfile}
+        />
+      ) : (
+        <div style={{ flex: 1, background: C.surface, borderRadius: '20px', border: `1.5px solid ${C.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.mutedLt }}>
+          Selecciona una conversación para comenzar
+        </div>
+      )}
+    </div>
+  );
+}
 // ─── MAIN APP ─────────────────────────────────────────────────────────────────
 export default function App() {
+  // Busque los useState de App y agregue esta línea:
+  const [totalUnreadDMs, setTotalUnreadDMs] = useState(0);
   const [session,       setSession]       = useState(null);
   const [profile,       setProfile]       = useState(null);
   const [profiles,      setProfiles]      = useState([]);
@@ -1011,21 +1352,42 @@ export default function App() {
     const notifSub = supabase.channel('notifs_' + session.user.id)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${session.user.id}` },
         payload => setNotifications(prev => [payload.new, ...prev])).subscribe();
-    // ── FIX: realtime listener now merges updates instead of reloading all tasks
-    // This prevents race conditions where optimistic updates get overwritten
     const taskSub = supabase.channel('tasks_global')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'tasks' },
         payload => setTasks(prev => [payload.new, ...prev.filter(t => t.id !== payload.new.id)]))
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'tasks' },
-  payload => setTasks(prev => prev.map(t => 
-    t.id === payload.new.id 
-      ? { ...t, ...payload.new }  // merge en lugar de reemplazar
-      : t
-  )))
+        payload => setTasks(prev => prev.map(t => t.id === payload.new.id ? { ...t, ...payload.new } : t)))
       .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'tasks' },
         payload => setTasks(prev => prev.filter(t => t.id !== payload.old.id)))
       .subscribe();
     return () => { supabase.removeChannel(notifSub); supabase.removeChannel(taskSub); };
+  }, [session]);
+
+  // Cargar y suscribirse a la cuenta global de mensajes no leídos de todos los chats
+  useEffect(() => {
+    if (!session) return;
+
+    const fetchTotalUnread = async () => {
+      const { data } = await supabase
+        .from('direct_messages')
+        .select('id')
+        .eq('receiver_id', session.user.id)
+        .eq('read', false);
+      if (data) setTotalUnreadDMs(data.length);
+    };
+    fetchTotalUnread();
+
+    const channel = supabase.channel('global_unread_dms_' + session.user.id)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'direct_messages' },
+        () => {
+          // Recalculamos el total de forma segura para cualquier tipo de cambio (insert, update, delete)
+          fetchTotalUnread();
+        })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [session]);
 
   const loadProfile       = async () => { const { data } = await supabase.from('profiles').select('*').eq('id', session.user.id).single(); if (data) setProfile(data); };
@@ -1033,35 +1395,15 @@ export default function App() {
   const loadTasks         = async () => { const { data } = await supabase.from('tasks').select('*').order('created_at', { ascending: false }); if (data) setTasks(data); };
   const loadNotifications = async () => { const { data } = await supabase.from('notifications').select('*').eq('user_id', session.user.id).order('created_at', { ascending: false }).limit(25); if (data) setNotifications(data); };
 
-  // ── FIX: handleStatusChange now awaits the DB update and verifies success
-  // before updating local state, ensuring persistence survives page reloads
   const handleStatusChange = async (taskId, newStatus) => {
     const completedAt = newStatus === 'completed' ? new Date().toISOString() : null;
     const upd = newStatus === 'completed'
       ? { status: newStatus, completed_at: completedAt }
       : { status: newStatus };
-
-    // Optimistic update first for instant UI feedback
     setTasks(prev => prev.map(t => t.id === taskId ? { ...t, ...upd } : t));
-
-    // Then persist to Supabase and verify
-    const { data, error } = await supabase
-      .from('tasks')
-      .update(upd)
-      .eq('id', taskId)
-      .select()
-      .single();
-
-    if (error) {
-      console.error('Error updating task status:', error);
-      // Revert optimistic update on failure
-      loadTasks();
-      return;
-    }
-    // Sync with what DB actually saved
-    if (data) {
-      setTasks(prev => prev.map(t => t.id === taskId ? data : t));
-    }
+    const { data, error } = await supabase.from('tasks').update(upd).eq('id', taskId).select().single();
+    if (error) { console.error('Error updating task status:', error); loadTasks(); return; }
+    if (data) setTasks(prev => prev.map(t => t.id === taskId ? data : t));
   };
 
   const handleDelete = async (taskId) => {
@@ -1076,11 +1418,11 @@ export default function App() {
     setNotifications(prev => prev.map(n => ({ ...n, read: true })));
   };
 
-  // Handler for profile updates from ProfileMenu
   const handleProfileUpdated = (updatedProfile) => {
     setProfile(updatedProfile);
     setProfiles(prev => prev.map(p => p.id === updatedProfile.id ? updatedProfile : p));
   };
+
 
   // ── AUTH ──────────────────────────────────────────────────────────────────
   const validate = () => {
@@ -1140,11 +1482,13 @@ export default function App() {
   const overdueCount = myTasks.filter(t => isOverdue(t.due_date, t.status)).length;
   const unread = notifications.filter(n => !n.read).length;
 
+  // ── FILTERED TASKS ────────────────────────────────────────────────────────
   const filteredTasks = tasks.filter(t => {
     if (activeTab === 'mine')      return t.assigned_to === session?.user.id && t.status !== 'completed';
     if (activeTab === 'all')       return true;
     if (activeTab === 'created')   return t.created_by  === session?.user.id;
-    if (activeTab === 'completed') return t.status === 'completed';
+    // "completed" tab: only show current user's completed tasks
+    if (activeTab === 'completed') return t.assigned_to === session?.user.id && t.status === 'completed';
     return true;
   });
 
@@ -1168,6 +1512,7 @@ export default function App() {
   if (session) {
     const isTeamView    = activeTab === 'team';
     const isLeaderboard = activeTab === 'analytics';
+    const isChatView    = activeTab === 'chat';
 
     const TAB_CONFIG = [
       { id: 'mine',      label: 'Mis Pendientes', icon: Clock          },
@@ -1176,6 +1521,7 @@ export default function App() {
       { id: 'completed', label: 'Completadas',    icon: CheckCircle2   },
       { id: 'team',      label: 'Equipo',         icon: Users          },
       { id: 'analytics', label: 'Analítica',      icon: Trophy         },
+      { id: 'chat',      label: 'Mensajes',       icon: MessageCircle  },
     ];
 
     return (
@@ -1234,7 +1580,7 @@ export default function App() {
               )}
             </div>
 
-            {/* Profile button — clickable, shows ProfileMenu */}
+            {/* Profile button */}
             {profile && (
               <div style={{ position: 'relative' }}>
                 <button
@@ -1296,7 +1642,24 @@ export default function App() {
                   onMouseEnter={e => { if (activeTab !== id) { e.currentTarget.style.background = C.accentLt; e.currentTarget.style.color = C.navy; } }}
                   onMouseLeave={e => { if (activeTab !== id) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = C.muted; } }}
                 >
-                  <Ic size={13} />{label}
+                  <Ic size={13} />
+                  <span style={{ flex: 1 }}>{label}</span>
+                  {id === 'chat' && totalUnreadDMs > 0 && (
+                    <span style={{
+                      background: C.danger,
+                      color: '#fff',
+                      borderRadius: '20px',
+                      padding: '2px 8px',
+                      fontSize: '10px',
+                      fontWeight: '700',
+                      lineHeight: 1,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center'
+                    }}>
+                      {totalUnreadDMs}
+                    </span>
+                  )}
                 </button>
               ))}
             </div>
@@ -1307,27 +1670,74 @@ export default function App() {
                 <div>
                   <div style={{ fontSize: '11px', color: C.muted, fontWeight: '500', marginBottom: 2 }}>{profile?.cargo}</div>
                 </div>
-                <button onClick={() => { setPreAssignTo(null); setShowNewTask(true); }}
-                  style={{ padding: '10px 22px', background: `linear-gradient(135deg, ${C.navy} 0%, ${C.blue} 100%)`, color: '#fff', border: 'none', borderRadius: '20px', fontSize: '13px', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, boxShadow: '0 4px 16px rgba(37,99,235,0.30)', transition: 'all 0.15s', flexShrink: 0 }}
-                  onMouseEnter={e => e.currentTarget.style.opacity = '0.88'}
-                  onMouseLeave={e => e.currentTarget.style.opacity = '1'}>
-                  <Plus size={16} /> Nueva Tarea
-                </button>
+                {!isChatView && (
+                  <button onClick={() => { setPreAssignTo(null); setShowNewTask(true); }}
+                    style={{ padding: '10px 22px', background: `linear-gradient(135deg, ${C.navy} 0%, ${C.blue} 100%)`, color: '#fff', border: 'none', borderRadius: '20px', fontSize: '13px', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, boxShadow: '0 4px 16px rgba(37,99,235,0.30)', transition: 'all 0.15s', flexShrink: 0 }}
+                    onMouseEnter={e => e.currentTarget.style.opacity = '0.88'}
+                    onMouseLeave={e => e.currentTarget.style.opacity = '1'}>
+                    <Plus size={16} /> Nueva Tarea
+                  </button>
+                )}
               </div>
-              <div style={{ display: 'flex', gap: 14 }}>
-                <StatCard icon={Clock} label="Mis Pendientes" value={myPending} iconColor={C.accent} iconBg={C.accentLt} accent={C.accent} sublabel="tareas sin completar" />
-                <StatCard icon={CheckCircle2} label="Completadas" value={myCompleted} iconColor={C.success} iconBg={C.successLt} accent={C.success} sublabel="tareas finalizadas" />
-                <StatCard icon={AlertCircle} label="Vencidas" value={overdueCount} iconColor={C.danger} iconBg={C.dangerLt} accent={C.danger} sublabel="requieren atención" />
-              </div>
+              {!isChatView && (
+                <div style={{ display: 'flex', gap: 14 }}>
+                  <StatCard icon={Clock} label="Mis Pendientes" value={myPending} iconColor={C.accent} iconBg={C.accentLt} accent={C.accent} sublabel="tareas sin completar" />
+                  <StatCard icon={CheckCircle2} label="Completadas" value={myCompleted} iconColor={C.success} iconBg={C.successLt} accent={C.success} sublabel="tareas finalizadas" />
+                  <StatCard icon={AlertCircle} label="Vencidas" value={overdueCount} iconColor={C.danger} iconBg={C.dangerLt} accent={C.danger} sublabel="requieren atención" />
+                </div>
+              )}
             </div>
           </div>
 
           {/* VIEWS */}
-          {isLeaderboard ? (
+          {isChatView ? (
+            <ChatView profiles={profiles} currentUserId={session.user.id} currentProfile={profile} />
+          ) : isLeaderboard ? (
             <LeaderboardView tasks={tasks} profiles={profiles} />
           ) : isTeamView ? (
             <TeamView profiles={profiles} tasks={tasks} currentUserId={session.user.id} onAssignTask={(id) => { setPreAssignTo(id); setShowNewTask(true); }} />
-          ) : activeTab !== 'completed' ? (
+          ) : activeTab === 'mine' ? (
+            // "Mis Pendientes" — solo 2 columnas: Por Hacer y En Proceso
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 20 }}>
+              {STATUS_COLS_MINE.map(col => {
+                const colTasks = filteredTasks.filter(t => t.status === col.status);
+                return (
+                  <div key={col.status}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, padding: '10px 14px', background: C.surface, borderRadius: '12px', border: `1.5px solid ${C.border}` }}>
+                      <div style={{ width: 8, height: 8, borderRadius: '50%', background: col.dot, flexShrink: 0 }} />
+                      <h3 style={{ margin: 0, fontSize: '13px', fontWeight: '700', color: C.navy, flex: 1 }}>{col.label}</h3>
+                      <span style={{ background: col.tag, color: col.tagText, borderRadius: '20px', padding: '2px 9px', fontSize: '11px', fontWeight: '700' }}>{colTasks.length}</span>
+                    </div>
+                    {colTasks.length === 0
+                      ? <div style={{ border: `2px dashed ${C.border}`, borderRadius: '14px', padding: '36px 24px', textAlign: 'center', color: C.mutedLt, fontSize: '12px' }}>Sin tareas en esta columna</div>
+                      : colTasks.map(task => (
+                        <TicketCard key={task.id} task={task} currentUserId={session.user.id}
+                          profiles={profiles} onStatusChange={handleStatusChange}
+                          onDelete={handleDelete} onViewDetail={setSelectedTask} />
+                      ))
+                    }
+                  </div>
+                );
+              })}
+            </div>
+          ) : activeTab === 'completed' ? (
+            // "Completadas" — lista plana de las tareas completadas del usuario
+            <div style={{ maxWidth: '720px' }}>
+              {filteredTasks.length === 0
+                ? <div style={{ border: `2px dashed ${C.border}`, borderRadius: '14px', padding: '48px', textAlign: 'center', color: C.mutedLt }}>
+                    <CheckCircle2 size={32} color={C.border} style={{ margin: '0 auto 12px', display: 'block' }} />
+                    <div style={{ fontSize: '14px', fontWeight: '600', color: C.muted, marginBottom: 4 }}>Sin tareas completadas aún</div>
+                    <div style={{ fontSize: '12px' }}>Aquí aparecerán tus tareas una vez que las marques como realizadas</div>
+                  </div>
+                : filteredTasks.map(task => (
+                  <TicketCard key={task.id} task={task} currentUserId={session.user.id}
+                    profiles={profiles} onStatusChange={handleStatusChange}
+                    onDelete={handleDelete} onViewDetail={setSelectedTask} />
+                ))
+              }
+            </div>
+          ) : (
+            // "Todas" y "Creadas por mí" — 3 columnas
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 20 }}>
               {STATUS_COLS.map(col => {
                 const colTasks = filteredTasks.filter(t => t.status === col.status);
@@ -1349,17 +1759,6 @@ export default function App() {
                   </div>
                 );
               })}
-            </div>
-          ) : (
-            <div style={{ maxWidth: '720px' }}>
-              {filteredTasks.length === 0
-                ? <div style={{ border: `2px dashed ${C.border}`, borderRadius: '14px', padding: '48px', textAlign: 'center', color: C.mutedLt }}>Sin tareas completadas</div>
-                : filteredTasks.map(task => (
-                  <TicketCard key={task.id} task={task} currentUserId={session.user.id}
-                    profiles={profiles} onStatusChange={handleStatusChange}
-                    onDelete={handleDelete} onViewDetail={setSelectedTask} />
-                ))
-              }
             </div>
           )}
         </main>
@@ -1407,7 +1806,6 @@ export default function App() {
       <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(ellipse at center, rgba(0,0,0,0.3) 0%, rgba(0,0,0,0.75) 100%)' }} />
 
       <div style={{ position: 'relative', zIndex: 10, width: '100%', display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: '40px 64px', maxWidth: '1200px', margin: '0 auto', gap: '64px' }}>
-        {/* Left copy */}
         <div style={{ flex: 1, color: '#fff', maxWidth: '480px', animation: 'fadeUp 0.5s ease-out' }}>
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: 'rgba(91,155,213,0.15)', border: '1px solid rgba(91,155,213,0.3)', borderRadius: '100px', padding: '5px 14px', marginBottom: 24 }}>
             <span style={{ fontSize: '11px', fontWeight: '700', color: C.accent, letterSpacing: '0.12em', textTransform: 'uppercase' }}>Bienvenido a</span>
@@ -1419,7 +1817,6 @@ export default function App() {
           </p>
         </div>
 
-        {/* Auth card */}
         <div style={{ width: '100%', maxWidth: '420px', background: '#ffffff', backdropFilter: 'blur(24px)', borderRadius: '24px', border: '1px solid rgba(0,0,0,0.08)', boxShadow: '0 32px 80px rgba(0,0,0,0.5)', overflow: 'hidden', animation: 'fadeUp 0.5s ease-out 0.1s both' }}>
           <div style={{ display: 'flex', borderBottom: `1px solid ${C.border}` }}>
             {[['login', 'Ingresar'], ['signup', 'Crear cuenta']].map(([mode, label]) => (
@@ -1519,32 +1916,3 @@ export default function App() {
     </div>
   );
 }
-
-const handleStatusChange = async (taskId, newStatus) => {
-  const completedAt = newStatus === 'completed' ? new Date().toISOString() : null;
-  const upd = newStatus === 'completed'
-    ? { status: newStatus, completed_at: completedAt }
-    : { status: newStatus };
-
-  setTasks(prev => prev.map(t => t.id === taskId ? { ...t, ...upd } : t));
-
-  const { data, error } = await supabase
-    .from('tasks')
-    .update(upd)
-    .eq('id', taskId)
-    .select()
-    .single();
-
-  // AGREGA ESTAS 2 LÍNEAS:
-  console.log('UPDATE result → data:', data);
-  console.log('UPDATE result → error:', error);
-
-  if (error) {
-    console.error('Error updating task status:', error);
-    loadTasks();
-    return;
-  }
-  if (data) {
-    setTasks(prev => prev.map(t => t.id === taskId ? data : t));
-  }
-};
