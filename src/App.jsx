@@ -130,28 +130,33 @@ function ProfileMenu({ profile, currentUserId, onClose, onProfileUpdated }) {
   const [tab, setTab] = useState('info');
   const [editForm, setEditForm] = useState({
     first_name: profile?.first_name || '',
-    last_name: profile?.last_name || '',
-    cargo: profile?.cargo || '',
+    last_name:  profile?.last_name  || '',
+    cargo:      profile?.cargo      || '',
   });
-  const [saving, setSaving] = useState(false);
-  const [saveMsg, setSaveMsg] = useState('');
-  const [saveErr, setSaveErr] = useState('');
+  const [saving,   setSaving]   = useState(false);
+  const [saveMsg,  setSaveMsg]  = useState('');
+  const [saveErr,  setSaveErr]  = useState('');
+  const [showPhotoMenu, setShowPhotoMenu] = useState(false);
   const fileRef = useRef();
 
   const handlePhotoUpload = async (file) => {
     if (!file) return;
-    const ext = file.name.split('.').pop();
-    const path = `avatars/${currentUserId}.${ext}`;
+    const ext  = file.name.split('.').pop();
+    const path = 'avatars/' + currentUserId + '.' + ext;
     const { error: upErr } = await supabase.storage.from('avatars').upload(path, file, { upsert: true });
     if (upErr) { setSaveErr('Error subiendo foto: ' + upErr.message); return; }
     const { data: urlData } = supabase.storage.from('avatars').getPublicUrl(path);
     const { data: updated } = await supabase
-      .from('profiles')
-      .update({ avatar_url: urlData.publicUrl })
-      .eq('id', currentUserId)
-      .select()
-      .single();
-    if (updated) { onProfileUpdated(updated); setSaveMsg('Foto actualizada'); }
+      .from('profiles').update({ avatar_url: urlData.publicUrl })
+      .eq('id', currentUserId).select().single();
+    if (updated) { onProfileUpdated(updated); setSaveMsg('Foto actualizada'); setShowPhotoMenu(false); }
+  };
+
+  const handleDeletePhoto = async () => {
+    const { data: updated } = await supabase
+      .from('profiles').update({ avatar_url: null })
+      .eq('id', currentUserId).select().single();
+    if (updated) { onProfileUpdated(updated); setSaveMsg('Foto eliminada'); setShowPhotoMenu(false); }
   };
 
   const handleSave = async () => {
@@ -161,14 +166,8 @@ function ProfileMenu({ profile, currentUserId, onClose, onProfileUpdated }) {
     setSaving(true); setSaveErr(''); setSaveMsg('');
     const { data: updated, error } = await supabase
       .from('profiles')
-      .update({
-        first_name: editForm.first_name.trim(),
-        last_name: editForm.last_name.trim(),
-        cargo: editForm.cargo.trim(),
-      })
-      .eq('id', currentUserId)
-      .select()
-      .single();
+      .update({ first_name: editForm.first_name.trim(), last_name: editForm.last_name.trim(), cargo: editForm.cargo.trim() })
+      .eq('id', currentUserId).select().single();
     setSaving(false);
     if (error) { setSaveErr(error.message); return; }
     if (updated) { onProfileUpdated(updated); setSaveMsg('¡Cambios guardados!'); setTab('info'); }
@@ -176,7 +175,7 @@ function ProfileMenu({ profile, currentUserId, onClose, onProfileUpdated }) {
 
   const inp = {
     width: '100%', height: '40px', padding: '0 12px',
-    borderRadius: '8px', border: `1.5px solid ${C.border}`,
+    borderRadius: '8px', border: '1.5px solid ' + C.border,
     background: C.bg, color: C.text, fontSize: '13px',
     outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit',
   };
@@ -187,21 +186,61 @@ function ProfileMenu({ profile, currentUserId, onClose, onProfileUpdated }) {
       <div style={{
         position: 'absolute', right: 0, top: 'calc(100% + 10px)',
         background: C.surface, borderRadius: '20px', width: '300px',
-        border: `1.5px solid ${C.border}`,
+        border: '1.5px solid ' + C.border,
         boxShadow: '0 16px 48px rgba(27,58,107,0.18)',
         overflow: 'hidden', zIndex: 200,
         animation: 'slideDown 0.15s ease-out',
       }}>
-        <div style={{ background: `linear-gradient(135deg, ${C.navy} 0%, ${C.blue} 100%)`, padding: '20px', textAlign: 'center', position: 'relative' }}>
+        {/* Header con foto */}
+        <div style={{ background: 'linear-gradient(135deg, ' + C.navy + ' 0%, ' + C.blue + ' 100%)', padding: '20px', textAlign: 'center', position: 'relative' }}>
           <div style={{ position: 'relative', display: 'inline-block', marginBottom: 10 }}>
-            <Avatar name={profile?.full_name || ''} size={64} photoUrl={profile?.avatar_url} />
-            <button onClick={() => fileRef.current?.click()}
-              style={{ position: 'absolute', bottom: 0, right: 0, width: 22, height: 22, borderRadius: '50%', background: C.gold, border: '2px solid #fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
-              <Camera size={10} color="#fff" />
+
+            {/* Foto cuadrada con object-fit cover desde arriba */}
+            <div style={{ width: 72, height: 72, borderRadius: '16px', overflow: 'hidden', border: '3px solid rgba(255,255,255,0.3)', display: 'inline-block' }}>
+              {profile?.avatar_url ? (
+                <img
+                  src={profile.avatar_url}
+                  alt={profile.full_name}
+                  style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top center', display: 'block' }}
+                />
+              ) : (
+                <div style={{ width: '100%', height: '100%', background: C.accentLt, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px', fontWeight: '800', color: C.navy }}>
+                  {initials(profile?.full_name || '')}
+                </div>
+              )}
+            </div>
+
+            {/* Botón editar foto */}
+            <button
+              onClick={() => setShowPhotoMenu(v => !v)}
+              style={{ position: 'absolute', bottom: -4, right: -4, width: 24, height: 24, borderRadius: '50%', background: C.gold, border: '2px solid #fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', zIndex: 2 }}>
+              <Camera size={11} color="#fff" />
             </button>
+
+            {/* Menú editar/eliminar foto */}
+            {showPhotoMenu && (
+              <div style={{ position: 'absolute', top: 'calc(100% + 8px)', left: '50%', transform: 'translateX(-50%)', background: C.surface, borderRadius: '12px', border: '1.5px solid ' + C.border, boxShadow: '0 8px 24px rgba(27,58,107,0.18)', overflow: 'hidden', zIndex: 10, minWidth: 160 }}>
+                <button
+                  onClick={() => { setShowPhotoMenu(false); fileRef.current?.click(); }}
+                  style={{ width: '100%', padding: '10px 14px', border: 'none', background: 'transparent', color: C.navy, fontSize: '12px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, borderBottom: '1px solid ' + C.border }}
+                  onMouseEnter={e => e.currentTarget.style.background = C.bg}
+                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                  <Camera size={13} color={C.accent} /> Editar foto
+                </button>
+                <button
+                  onClick={handleDeletePhoto}
+                  style={{ width: '100%', padding: '10px 14px', border: 'none', background: 'transparent', color: C.danger, fontSize: '12px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}
+                  onMouseEnter={e => e.currentTarget.style.background = C.dangerLt}
+                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                  <Trash size={13} color={C.danger} /> Eliminar foto
+                </button>
+              </div>
+            )}
           </div>
+
           <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }}
             onChange={e => handlePhotoUpload(e.target.files[0])} />
+
           <div style={{ fontSize: '15px', fontWeight: '800', color: '#fff' }}>{profile?.full_name}</div>
           <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.65)', marginTop: 2 }}>{profile?.email}</div>
           <div style={{ marginTop: 6, display: 'inline-block', background: 'rgba(255,255,255,0.15)', borderRadius: '20px', padding: '2px 10px', fontSize: '10px', color: 'rgba(255,255,255,0.85)', fontWeight: '600' }}>
@@ -209,7 +248,8 @@ function ProfileMenu({ profile, currentUserId, onClose, onProfileUpdated }) {
           </div>
         </div>
 
-        <div style={{ display: 'flex', borderBottom: `1px solid ${C.border}` }}>
+        {/* Tabs */}
+        <div style={{ display: 'flex', borderBottom: '1px solid ' + C.border }}>
           {[['info', 'Mi perfil', User], ['edit', 'Editar', Edit2]].map(([id, label, Ic]) => (
             <button key={id} onClick={() => { setTab(id); setSaveMsg(''); setSaveErr(''); }}
               style={{
@@ -217,7 +257,7 @@ function ProfileMenu({ profile, currentUserId, onClose, onProfileUpdated }) {
                 fontFamily: 'inherit', fontSize: '12px', fontWeight: '700',
                 background: tab === id ? C.accentLt : 'transparent',
                 color: tab === id ? C.navy : C.muted,
-                borderBottom: tab === id ? `2px solid ${C.blue}` : '2px solid transparent',
+                borderBottom: tab === id ? '2px solid ' + C.blue : '2px solid transparent',
                 display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
               }}>
               <Ic size={12} />{label}
@@ -228,18 +268,23 @@ function ProfileMenu({ profile, currentUserId, onClose, onProfileUpdated }) {
         <div style={{ padding: '16px' }}>
           {tab === 'info' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {saveMsg && (
+                <div style={{ padding: '8px 12px', background: C.successLt, borderRadius: '8px', color: C.success, fontSize: '12px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <CheckCircle2 size={13} />{saveMsg}
+                </div>
+              )}
               {[
                 { label: 'Nombre completo', value: profile?.full_name },
-                { label: 'Correo', value: profile?.email },
-                { label: 'Cargo', value: profile?.cargo },
+                { label: 'Correo',          value: profile?.email     },
+                { label: 'Cargo',           value: profile?.cargo     },
               ].map(({ label, value }) => (
-                <div key={label} style={{ background: C.bg, borderRadius: '10px', padding: '10px 12px', border: `1px solid ${C.border}` }}>
+                <div key={label} style={{ background: C.bg, borderRadius: '10px', padding: '10px 12px', border: '1px solid ' + C.border }}>
                   <div style={{ fontSize: '10px', fontWeight: '700', color: C.mutedLt, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 2 }}>{label}</div>
                   <div style={{ fontSize: '13px', fontWeight: '600', color: C.navy }}>{value || '—'}</div>
                 </div>
               ))}
               <button onClick={() => setTab('edit')}
-                style={{ width: '100%', padding: '9px', borderRadius: '10px', border: `1.5px solid ${C.border}`, background: 'transparent', color: C.muted, fontSize: '12px', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 4 }}>
+                style={{ width: '100%', padding: '9px', borderRadius: '10px', border: '1.5px solid ' + C.border, background: 'transparent', color: C.muted, fontSize: '12px', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 4 }}>
                 <Edit2 size={12} /> Editar información
               </button>
             </div>
@@ -262,30 +307,30 @@ function ProfileMenu({ profile, currentUserId, onClose, onProfileUpdated }) {
                 <input style={inp} value={editForm.first_name}
                   onChange={e => setEditForm(f => ({ ...f, first_name: e.target.value }))}
                   onFocus={e => { e.target.style.borderColor = C.blue; e.target.style.background = '#fff'; }}
-                  onBlur={e => { e.target.style.borderColor = C.border; e.target.style.background = C.bg; }} />
+                  onBlur={e =>  { e.target.style.borderColor = C.border; e.target.style.background = C.bg; }} />
               </div>
               <div>
                 <label style={{ display: 'block', fontSize: '10px', fontWeight: '700', color: C.navy, marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Apellidos</label>
                 <input style={inp} value={editForm.last_name}
                   onChange={e => setEditForm(f => ({ ...f, last_name: e.target.value }))}
                   onFocus={e => { e.target.style.borderColor = C.blue; e.target.style.background = '#fff'; }}
-                  onBlur={e => { e.target.style.borderColor = C.border; e.target.style.background = C.bg; }} />
+                  onBlur={e =>  { e.target.style.borderColor = C.border; e.target.style.background = C.bg; }} />
               </div>
               <div>
                 <label style={{ display: 'block', fontSize: '10px', fontWeight: '700', color: C.navy, marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Cargo</label>
                 <input list="cargo-opts-profile" style={inp} value={editForm.cargo}
                   onChange={e => setEditForm(f => ({ ...f, cargo: e.target.value }))}
                   onFocus={e => { e.target.style.borderColor = C.blue; e.target.style.background = '#fff'; }}
-                  onBlur={e => { e.target.style.borderColor = C.border; e.target.style.background = C.bg; }} />
+                  onBlur={e =>  { e.target.style.borderColor = C.border; e.target.style.background = C.bg; }} />
                 <datalist id="cargo-opts-profile">{CARGO_OPTIONS.map(c => <option key={c} value={c} />)}</datalist>
               </div>
               <div style={{ display: 'flex', gap: 8 }}>
                 <button onClick={() => setTab('info')}
-                  style={{ flex: 1, padding: '9px', borderRadius: '10px', border: `1.5px solid ${C.border}`, background: 'transparent', color: C.muted, fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
+                  style={{ flex: 1, padding: '9px', borderRadius: '10px', border: '1.5px solid ' + C.border, background: 'transparent', color: C.muted, fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
                   Cancelar
                 </button>
                 <button onClick={handleSave} disabled={saving}
-                  style={{ flex: 1, padding: '9px', borderRadius: '10px', border: 'none', background: `linear-gradient(135deg, ${C.navy}, ${C.blue})`, color: '#fff', fontSize: '12px', fontWeight: '700', cursor: saving ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, opacity: saving ? 0.75 : 1 }}>
+                  style={{ flex: 1, padding: '9px', borderRadius: '10px', border: 'none', background: 'linear-gradient(135deg, ' + C.navy + ', ' + C.blue + ')', color: '#fff', fontSize: '12px', fontWeight: '700', cursor: saving ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, opacity: saving ? 0.75 : 1 }}>
                   {saving ? <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /> : <Save size={12} />}
                   {saving ? 'Guardando...' : 'Guardar'}
                 </button>
@@ -297,6 +342,8 @@ function ProfileMenu({ profile, currentUserId, onClose, onProfileUpdated }) {
     </>
   );
 }
+
+// ─── TASK DETAIL MODAL ────────────────────────────────────────────────────────
 
 // ─── TASK DETAIL MODAL ────────────────────────────────────────────────────────
 function TaskDetailModal({ task, profiles, currentUserId, onClose, onStatusChange, onDelete }) {
@@ -984,10 +1031,12 @@ function DMConversation({ otherUser, currentUserId, currentProfile, onBack }) {
   const [loading, setLoading]   = useState(true);
   const [sending, setSending]   = useState(false);
   const [hoveredMsg, setHoveredMsg] = useState(null);
-  const bottomRef = useRef();
-  const inputRef  = useRef();
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [uploadingFile, setUploadingFile] = useState(false);
+  const bottomRef  = useRef();
+  const inputRef   = useRef();
+  const fileRef    = useRef();
 
-  // Unique channel key: sorted IDs so A→B and B→A share same conversation
   const channelKey = [currentUserId, otherUser.id].sort().join('_');
 
   useEffect(() => {
@@ -997,27 +1046,24 @@ function DMConversation({ otherUser, currentUserId, currentProfile, onBack }) {
         .from('direct_messages')
         .select('*')
         .or(
-          `and(sender_id.eq.${currentUserId},receiver_id.eq.${otherUser.id}),and(sender_id.eq.${otherUser.id},receiver_id.eq.${currentUserId})`
+          'and(sender_id.eq.' + currentUserId + ',receiver_id.eq.' + otherUser.id + '),and(sender_id.eq.' + otherUser.id + ',receiver_id.eq.' + currentUserId + ')'
         )
         .order('created_at', { ascending: true })
         .limit(200);
       if (data) setMessages(data);
-
-      // Marcar como leídos los mensajes recibidos
       await supabase
         .from('direct_messages')
         .update({ read: true })
         .eq('receiver_id', currentUserId)
         .eq('sender_id', otherUser.id)
         .eq('read', false);
-
       setLoading(false);
     };
     load();
 
-    const sub = supabase.channel(`dm_${channelKey}`)
+    const sub = supabase.channel('dm_' + channelKey)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'direct_messages' },
-        payload => {
+        async payload => {
           const m = payload.new;
           const relevant = (m.sender_id === currentUserId && m.receiver_id === otherUser.id) ||
                            (m.sender_id === otherUser.id && m.receiver_id === currentUserId);
@@ -1026,6 +1072,9 @@ function DMConversation({ otherUser, currentUserId, currentProfile, onBack }) {
             if (prev.find(x => x.id === m.id)) return prev;
             return [...prev, m];
           });
+          if (m.sender_id === otherUser.id && m.receiver_id === currentUserId) {
+            await supabase.from('direct_messages').update({ read: true }).eq('id', m.id);
+          }
         })
       .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'direct_messages' },
         payload => setMessages(prev => prev.filter(m => m.id !== payload.old.id)))
@@ -1040,13 +1089,34 @@ function DMConversation({ otherUser, currentUserId, currentProfile, onBack }) {
 
   const handleSend = async () => {
     const trimmed = text.trim();
-    if (!trimmed || sending) return;
+    if (!trimmed && !selectedFile) return;
+    if (sending || uploadingFile) return;
+
+    let fileUrl = null, fileName = null, fileType = null;
+
+    if (selectedFile) {
+      setUploadingFile(true);
+      const ext = selectedFile.name.split('.').pop();
+      const path = 'dm-files/' + currentUserId + '/' + Date.now() + '_' + Math.random().toString(36).slice(2) + '.' + ext;
+      const { error: upErr } = await supabase.storage.from('dm-files').upload(path, selectedFile);
+      if (upErr) { console.error('Error subiendo archivo:', upErr); setUploadingFile(false); return; }
+      const { data: urlData } = supabase.storage.from('dm-files').getPublicUrl(path);
+      fileUrl  = urlData.publicUrl;
+      fileName = selectedFile.name;
+      fileType = selectedFile.type;
+      setSelectedFile(null);
+      setUploadingFile(false);
+    }
+
     setSending(true);
     setText('');
     const { error } = await supabase.from('direct_messages').insert([{
-      sender_id: currentUserId,
+      sender_id:   currentUserId,
       receiver_id: otherUser.id,
-      content: trimmed,
+      content:     trimmed || null,
+      file_url:    fileUrl,
+      file_name:   fileName,
+      file_type:   fileType,
     }]);
     if (error) { console.error('Error sending DM:', error); setText(trimmed); }
     setSending(false);
@@ -1061,7 +1131,6 @@ function DMConversation({ otherUser, currentUserId, currentProfile, onBack }) {
     await supabase.from('direct_messages').delete().eq('id', msgId);
   };
 
-  // Group by date
   const items = (() => {
     const groups = [];
     let lastDate = null;
@@ -1082,18 +1151,15 @@ function DMConversation({ otherUser, currentUserId, currentProfile, onBack }) {
   };
 
   return (
-    <div style={{ flex: 1, background: C.surface, borderRadius: '20px', border: `1.5px solid ${C.border}`, boxShadow: '0 2px 8px rgba(27,58,107,0.07)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+    <div style={{ flex: 1, background: C.surface, borderRadius: '20px', border: '1.5px solid ' + C.border, boxShadow: '0 2px 8px rgba(27,58,107,0.07)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       {/* Header */}
-      <div style={{ padding: '14px 20px', borderBottom: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', gap: 12, background: C.surface }}>
-        <button onClick={onBack} style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: '8px', padding: '6px', cursor: 'pointer', color: C.muted, display: 'flex', flexShrink: 0 }}
+      <div style={{ padding: '14px 20px', borderBottom: '1px solid ' + C.border, display: 'flex', alignItems: 'center', gap: 12, background: C.surface }}>
+        <button onClick={onBack} style={{ background: C.bg, border: '1px solid ' + C.border, borderRadius: '8px', padding: '6px', cursor: 'pointer', color: C.muted, display: 'flex', flexShrink: 0 }}
           onMouseEnter={e => { e.currentTarget.style.background = C.accentLt; e.currentTarget.style.color = C.navy; }}
           onMouseLeave={e => { e.currentTarget.style.background = C.bg; e.currentTarget.style.color = C.muted; }}>
           <ArrowLeft size={14} />
         </button>
-        <div style={{ position: 'relative', flexShrink: 0 }}>
-          <Avatar name={otherUser.full_name} size={38} photoUrl={otherUser.avatar_url} />
-         
-        </div>
+        <Avatar name={otherUser.full_name} size={38} photoUrl={otherUser.avatar_url} />
         <div>
           <div style={{ fontSize: '14px', fontWeight: '800', color: C.navy }}>{otherUser.full_name}</div>
           <div style={{ fontSize: '11px', color: C.muted }}>{otherUser.cargo}</div>
@@ -1118,9 +1184,9 @@ function DMConversation({ otherUser, currentUserId, currentProfile, onBack }) {
           items.map((item, idx) => {
             if (item.type === 'date') {
               return (
-                <div key={`date-${idx}`} style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '16px 0 8px' }}>
+                <div key={'date-' + idx} style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '16px 0 8px' }}>
                   <div style={{ flex: 1, height: 1, background: C.border }} />
-                  <span style={{ fontSize: '10px', fontWeight: '700', color: C.mutedLt, textTransform: 'capitalize', background: C.bg, padding: '3px 10px', borderRadius: '20px', border: `1px solid ${C.border}` }}>{item.label}</span>
+                  <span style={{ fontSize: '10px', fontWeight: '700', color: C.mutedLt, textTransform: 'capitalize', background: C.bg, padding: '3px 10px', borderRadius: '20px', border: '1px solid ' + C.border }}>{item.label}</span>
                   <div style={{ flex: 1, height: 1, background: C.border }} />
                 </div>
               );
@@ -1152,22 +1218,57 @@ function DMConversation({ otherUser, currentUserId, currentProfile, onBack }) {
                       borderRadius: consecutive
                         ? (isMe ? '18px 6px 6px 18px' : '6px 18px 18px 6px')
                         : (isMe ? '18px 6px 18px 18px' : '6px 18px 18px 18px'),
-                      background: isMe ? `linear-gradient(135deg, ${C.navy} 0%, ${C.blue} 100%)` : C.bg,
+                      background: isMe ? ('linear-gradient(135deg, ' + C.navy + ' 0%, ' + C.blue + ' 100%)') : C.bg,
                       color: isMe ? '#fff' : C.text,
                       fontSize: '13px', lineHeight: '1.5',
-                      border: isMe ? 'none' : `1.5px solid ${C.border}`,
+                      border: isMe ? 'none' : ('1.5px solid ' + C.border),
                       boxShadow: isMe ? '0 2px 8px rgba(37,99,235,0.20)' : '0 1px 3px rgba(27,58,107,0.06)',
-                      wordBreak: 'break-word', whiteSpace: 'pre-wrap',
+                      wordBreak: 'break-word', whiteSpace: 'pre-wrap', maxWidth: '100%',
                     }}>
-                      {msg.content}
+                      {msg.file_url && msg.file_type && msg.file_type.startsWith('image/') && (
+                        <div style={{ marginBottom: msg.content ? 8 : 0 }}>
+                          <img
+                            src={msg.file_url}
+                            alt={msg.file_name || 'imagen'}
+                            style={{ maxWidth: '220px', maxHeight: '200px', borderRadius: '10px', display: 'block', objectFit: 'cover', cursor: 'pointer' }}
+                            onClick={() => window.open(msg.file_url, '_blank')}
+                          />
+                        </div>
+                      )}
+                      {msg.file_url && msg.file_type && !msg.file_type.startsWith('image/') && (
+                        <a
+                          href={msg.file_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{
+                            display: 'flex', alignItems: 'center', gap: 8,
+                            padding: '8px 10px', borderRadius: '8px',
+                            background: isMe ? 'rgba(255,255,255,0.15)' : C.surface,
+                            border: '1px solid ' + (isMe ? 'rgba(255,255,255,0.2)' : C.border),
+                            textDecoration: 'none', marginBottom: msg.content ? 8 : 0,
+                          }}
+                        >
+                          <FileText size={16} color={isMe ? '#fff' : C.accent} />
+                          <span style={{ fontSize: '12px', fontWeight: '600', color: isMe ? '#fff' : C.navy, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '160px' }}>
+                            {msg.file_name}
+                          </span>
+                          <ExternalLink size={11} color={isMe ? 'rgba(255,255,255,0.6)' : C.muted} />
+                        </a>
+                      )}
+                      {msg.content && <span>{msg.content}</span>}
                     </div>
                     {isMe && hoveredMsg === msg.id && (
                       <button onClick={() => handleDelete(msg.id)}
-                        style={{ background: C.dangerLt, border: `1px solid #FECACA`, borderRadius: '6px', padding: '4px', cursor: 'pointer', color: C.danger, display: 'flex', flexShrink: 0 }}>
+                        style={{ background: C.dangerLt, border: '1px solid #FECACA', borderRadius: '6px', padding: '4px', cursor: 'pointer', color: C.danger, display: 'flex', flexShrink: 0 }}>
                         <Trash2 size={11} />
                       </button>
                     )}
                   </div>
+                  {isMe && idx === items.length - 1 && (
+                    <div style={{ fontSize: '9px', color: msg.read ? C.accent : C.mutedLt, marginTop: 2, textAlign: 'right', paddingRight: 4 }}>
+                      {msg.read ? '✓✓ Visto' : '✓ Enviado'}
+                    </div>
+                  )}
                   {consecutive && (
                     <div style={{ fontSize: '9px', color: C.mutedLt, marginTop: 1 }}>{formatTime(msg.created_at)}</div>
                   )}
@@ -1180,20 +1281,47 @@ function DMConversation({ otherUser, currentUserId, currentProfile, onBack }) {
       </div>
 
       {/* Input */}
-      <div style={{ padding: '14px 18px', borderTop: `1px solid ${C.border}`, background: C.surface }}>
-        <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', background: C.bg, borderRadius: '16px', border: `1.5px solid ${C.border}`, padding: '8px 8px 8px 16px', transition: 'border-color 0.15s' }}
+      <div style={{ padding: '14px 18px', borderTop: '1px solid ' + C.border, background: C.surface }}>
+        {selectedFile && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', marginBottom: 8, background: C.accentLt, borderRadius: '10px', border: '1px solid ' + C.border }}>
+            {selectedFile.type.startsWith('image/') ? (
+              <img src={URL.createObjectURL(selectedFile)} alt="preview" style={{ width: 36, height: 36, borderRadius: '6px', objectFit: 'cover', flexShrink: 0 }} />
+            ) : (
+              <div style={{ width: 36, height: 36, borderRadius: '6px', background: C.surface, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: '1px solid ' + C.border }}>
+                <FileText size={16} color={C.accent} />
+              </div>
+            )}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: '12px', fontWeight: '700', color: C.navy, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{selectedFile.name}</div>
+              <div style={{ fontSize: '10px', color: C.muted }}>{(selectedFile.size / 1024).toFixed(1)} KB</div>
+            </div>
+            <button onClick={() => setSelectedFile(null)}
+              style={{ background: C.dangerLt, border: '1px solid #FECACA', borderRadius: '6px', padding: '4px', cursor: 'pointer', color: C.danger, display: 'flex', flexShrink: 0 }}>
+              <X size={11} />
+            </button>
+          </div>
+        )}
+        <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', background: C.bg, borderRadius: '16px', border: '1.5px solid ' + C.border, padding: '8px 8px 8px 12px', transition: 'border-color 0.15s' }}
           onFocusCapture={e => e.currentTarget.style.borderColor = C.blue}
           onBlurCapture={e => e.currentTarget.style.borderColor = C.border}>
+          <input ref={fileRef} type="file" accept="image/*,.pdf" style={{ display: 'none' }}
+            onChange={e => { const f = e.target.files[0]; if (f) setSelectedFile(f); e.target.value = ''; }} />
+          <button onClick={() => fileRef.current?.click()}
+            style={{ width: 34, height: 34, borderRadius: '10px', border: 'none', background: selectedFile ? C.accentLt : 'transparent', color: selectedFile ? C.blue : C.mutedLt, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0, transition: 'all 0.15s' }}
+            onMouseEnter={e => { e.currentTarget.style.background = C.accentLt; e.currentTarget.style.color = C.blue; }}
+            onMouseLeave={e => { if (!selectedFile) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = C.mutedLt; } }}>
+            <Paperclip size={16} />
+          </button>
           <textarea ref={inputRef} value={text} onChange={e => setText(e.target.value)} onKeyDown={handleKeyDown}
-            placeholder={`Mensaje a ${otherUser.full_name.split(' ')[0]}...`} rows={1}
+            placeholder={'Mensaje a ' + otherUser.full_name.split(' ')[0] + '...'} rows={1}
             style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', resize: 'none', fontFamily: 'inherit', fontSize: '13px', color: C.text, lineHeight: '1.5', maxHeight: '120px', overflowY: 'auto', padding: '4px 0' }}
             onInput={e => { e.target.style.height = 'auto'; e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px'; }} />
-          <button onClick={handleSend} disabled={!text.trim() || sending}
-            style={{ width: 38, height: 38, borderRadius: '12px', border: 'none', background: text.trim() && !sending ? `linear-gradient(135deg, ${C.navy} 0%, ${C.blue} 100%)` : C.border, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: text.trim() && !sending ? 'pointer' : 'not-allowed', flexShrink: 0, transition: 'all 0.15s', boxShadow: text.trim() && !sending ? '0 3px 10px rgba(37,99,235,0.25)' : 'none' }}>
-            {sending ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <Send size={14} />}
+          <button onClick={handleSend} disabled={(!text.trim() && !selectedFile) || sending || uploadingFile}
+            style={{ width: 38, height: 38, borderRadius: '12px', border: 'none', background: (text.trim() || selectedFile) && !sending && !uploadingFile ? ('linear-gradient(135deg, ' + C.navy + ' 0%, ' + C.blue + ' 100%)') : C.border, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: (text.trim() || selectedFile) && !sending && !uploadingFile ? 'pointer' : 'not-allowed', flexShrink: 0, transition: 'all 0.15s' }}>
+            {sending || uploadingFile ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <Send size={14} />}
           </button>
         </div>
-        <div style={{ fontSize: '10px', color: C.mutedLt, marginTop: 5, paddingLeft: 4 }}>Enter para enviar · Shift+Enter para nueva línea</div>
+        <div style={{ fontSize: '10px', color: C.mutedLt, marginTop: 5, paddingLeft: 4 }}>Enter para enviar · Shift+Enter para nueva línea · 📎 para adjuntar</div>
       </div>
     </div>
   );
