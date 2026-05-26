@@ -1047,20 +1047,26 @@ function TeamView({ profiles, tasks, currentUserId, onAssignTask }) {
 
 // ─── DIRECT MESSAGE CONVERSATION ─────────────────────────────────────────────
 function DMConversation({ otherUser, currentUserId, currentProfile, onBack }) {
-  const [messages, setMessages] = useState([]);
-  const [text, setText]         = useState('');
-  const [loading, setLoading]   = useState(true);
-  const [sending, setSending]   = useState(false);
-  const [hoveredMsg, setHoveredMsg] = useState(null);
+  const [messages, setMessages]         = useState([]);
+  const [text, setText]                 = useState('');
+  const [loading, setLoading]           = useState(true);
+  const [sending, setSending]           = useState(false);
+  const [hoveredMsg, setHoveredMsg]     = useState(null);
   const [selectedFile, setSelectedFile] = useState(null);
   const [uploadingFile, setUploadingFile] = useState(false);
   const [clearingChat, setClearingChat] = useState(false);
-  const bottomRef  = useRef();
-  const inputRef   = useRef();
-  const fileRef    = useRef();
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [reactionPicker, setReactionPicker] = useState(null); // msgId
+  const [reactions, setReactions]       = useState({}); // { msgId: { emoji: [userId,...] } }
+  const bottomRef = useRef();
+  const inputRef  = useRef();
+  const fileRef   = useRef();
 
   const channelKey = [currentUserId, otherUser.id].sort().join('_');
 
+  const EMOJI_LIST = ['👍','❤️','😂','😮','😢','🔥','👏','🎉','💯','✅'];
+
+  // ── Load messages & subscribe ──────────────────────────────────────────────
   useEffect(() => {
     const load = async () => {
       setLoading(true);
@@ -1068,11 +1074,18 @@ function DMConversation({ otherUser, currentUserId, currentProfile, onBack }) {
         .from('direct_messages')
         .select('*')
         .or(
-          'and(sender_id.eq.' + currentUserId + ',receiver_id.eq.' + otherUser.id + '),and(sender_id.eq.' + otherUser.id + ',receiver_id.eq.' + currentUserId + ')'
+          'and(sender_id.eq.' + currentUserId + ',receiver_id.eq.' + otherUser.id + '),' +
+          'and(sender_id.eq.' + otherUser.id   + ',receiver_id.eq.' + currentUserId + ')'
         )
         .order('created_at', { ascending: true })
         .limit(200);
-      if (data) setMessages(data);
+      if (data) {
+        setMessages(data);
+        // Build reactions map from stored data
+        const rMap = {};
+        data.forEach(m => { if (m.reactions) rMap[m.id] = m.reactions; });
+        setReactions(rMap);
+      }
       await supabase
         .from('direct_messages')
         .update({ read: true })
@@ -1087,16 +1100,19 @@ function DMConversation({ otherUser, currentUserId, currentProfile, onBack }) {
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'direct_messages' },
         async payload => {
           const m = payload.new;
-          const relevant = (m.sender_id === currentUserId && m.receiver_id === otherUser.id) ||
-                           (m.sender_id === otherUser.id && m.receiver_id === currentUserId);
+          const relevant =
+            (m.sender_id === currentUserId && m.receiver_id === otherUser.id) ||
+            (m.sender_id === otherUser.id   && m.receiver_id === currentUserId);
           if (!relevant) return;
-          setMessages(prev => {
-            if (prev.find(x => x.id === m.id)) return prev;
-            return [...prev, m];
-          });
-          if (m.sender_id === otherUser.id && m.receiver_id === currentUserId) {
+          setMessages(prev => prev.find(x => x.id === m.id) ? prev : [...prev, m]);
+          if (m.sender_id === otherUser.id && m.receiver_id === currentUserId)
             await supabase.from('direct_messages').update({ read: true }).eq('id', m.id);
-          }
+        })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'direct_messages' },
+        payload => {
+          const m = payload.new;
+          setMessages(prev => prev.map(x => x.id === m.id ? m : x));
+          if (m.reactions) setReactions(prev => ({ ...prev, [m.id]: m.reactions }));
         })
       .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'direct_messages' },
         payload => setMessages(prev => prev.filter(m => m.id !== payload.old.id)))
@@ -1109,8 +1125,18 @@ function DMConversation({ otherUser, currentUserId, currentProfile, onBack }) {
     if (!loading) bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, loading]);
 
+  // Close reaction picker on outside click
+  useEffect(() => {
+    if (!reactionPicker) return;
+    const close = () => setReactionPicker(null);
+    window.addEventListener('click', close);
+    return () => window.removeEventListener('click', close);
+  }, [reactionPicker]);
+
+  // ── Send message ───────────────────────────────────────────────────────────
   const handleSend = async () => {
     const trimmed = text.trim();
+    // FIX: allow send if there's a file even without text
     if (!trimmed && !selectedFile) return;
     if (sending || uploadingFile) return;
 
@@ -1118,8 +1144,9 @@ function DMConversation({ otherUser, currentUserId, currentProfile, onBack }) {
 
     if (selectedFile) {
       setUploadingFile(true);
-      const ext = selectedFile.name.split('.').pop();
-      const path = 'dm-files/' + currentUserId + '/' + Date.now() + '_' + Math.random().toString(36).slice(2) + '.' + ext;
+      const ext  = selectedFile.name.split('.').pop();
+      const path = 'dm-files/' + currentUserId + '/' + Date.now() + '_' +
+                   Math.random().toString(36).slice(2) + '.' + ext;
       const { error: upErr } = await supabase.storage.from('dm-files').upload(path, selectedFile);
       if (upErr) { console.error('Error subiendo archivo:', upErr); setUploadingFile(false); return; }
       const { data: urlData } = supabase.storage.from('dm-files').getPublicUrl(path);
@@ -1132,6 +1159,9 @@ function DMConversation({ otherUser, currentUserId, currentProfile, onBack }) {
 
     setSending(true);
     setText('');
+    // Reset textarea height
+    if (inputRef.current) { inputRef.current.style.height = 'auto'; }
+
     const { error } = await supabase.from('direct_messages').insert([{
       sender_id:   currentUserId,
       receiver_id: otherUser.id,
@@ -1149,20 +1179,54 @@ function DMConversation({ otherUser, currentUserId, currentProfile, onBack }) {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
   };
 
+  // ── Delete single message ──────────────────────────────────────────────────
   const handleDelete = async (msgId) => {
     await supabase.from('direct_messages').delete().eq('id', msgId);
   };
 
+  // ── Clear chat — deletes ALL messages between both users ──────────────────
   const handleClearChat = async () => {
-    if (!window.confirm('¿Vaciar toda la conversación? Esto eliminará todos tus mensajes enviados en este chat.')) return;
     setClearingChat(true);
+    setShowClearConfirm(false);
+    // Delete messages in both directions
     await supabase
       .from('direct_messages')
       .delete()
-      .eq('sender_id', currentUserId)
-      .eq('receiver_id', otherUser.id);
+      .or(
+        'and(sender_id.eq.' + currentUserId + ',receiver_id.eq.' + otherUser.id + '),' +
+        'and(sender_id.eq.' + otherUser.id   + ',receiver_id.eq.' + currentUserId + ')'
+      );
+    setMessages([]);
+    setReactions({});
     setClearingChat(false);
   };
+
+  // ── Emoji reaction ─────────────────────────────────────────────────────────
+  const handleReaction = async (msgId, emoji, e) => {
+    e.stopPropagation();
+    setReactionPicker(null);
+
+    const current = reactions[msgId] || {};
+    const users   = current[emoji] || [];
+    let updated;
+
+    if (users.includes(currentUserId)) {
+      // Remove reaction
+      const next = users.filter(id => id !== currentUserId);
+      updated = { ...current, [emoji]: next };
+      if (next.length === 0) delete updated[emoji];
+    } else {
+      // Add reaction
+      updated = { ...current, [emoji]: [...users, currentUserId] };
+    }
+
+    // Optimistic update
+    setReactions(prev => ({ ...prev, [msgId]: updated }));
+    await supabase.from('direct_messages').update({ reactions: updated }).eq('id', msgId);
+  };
+
+  // ── Helpers ────────────────────────────────────────────────────────────────
+  const isImage = (type) => type && type.startsWith('image/');
 
   const items = (() => {
     const groups = [];
@@ -1183,13 +1247,54 @@ function DMConversation({ otherUser, currentUserId, currentProfile, onBack }) {
     return prev.data?.sender_id === curr.data?.sender_id;
   };
 
-  // Helper: detect image types
-  const isImage = (type) => type && type.startsWith('image/');
-
+  // ── Render ─────────────────────────────────────────────────────────────────
   return (
-    <div style={{ flex: 1, background: C.surface, borderRadius: '20px', border: '1.5px solid ' + C.border, boxShadow: '0 2px 8px rgba(27,58,107,0.07)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-      {/* Header */}
-      <div style={{ padding: '14px 20px', borderBottom: '1px solid ' + C.border, display: 'flex', alignItems: 'center', gap: 12, background: C.surface }}>
+    <div style={{ flex: 1, background: C.surface, borderRadius: '20px', border: '1.5px solid ' + C.border, boxShadow: '0 2px 8px rgba(27,58,107,0.07)', display: 'flex', flexDirection: 'column', overflow: 'hidden', position: 'relative' }}>
+
+      {/* ── Inline Clear-Chat Confirm (WhatsApp style) ── */}
+      {showClearConfirm && (
+        <div style={{
+          position: 'absolute', inset: 0, zIndex: 50,
+          background: 'rgba(10,15,30,0.45)', backdropFilter: 'blur(4px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          borderRadius: '20px',
+        }}>
+          <div style={{
+            background: C.surface, borderRadius: '18px', padding: '28px 28px 22px',
+            width: '320px', border: '1.5px solid ' + C.border,
+            boxShadow: '0 16px 48px rgba(27,58,107,0.22)',
+            animation: 'slideDown 0.15s ease-out',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+              <div style={{ width: 40, height: 40, borderRadius: '12px', background: C.dangerLt, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <Trash size={18} color={C.danger} />
+              </div>
+              <div>
+                <div style={{ fontSize: '15px', fontWeight: '800', color: C.navy }}>Vaciar conversación</div>
+                <div style={{ fontSize: '11px', color: C.muted }}>Esta acción no se puede deshacer</div>
+              </div>
+            </div>
+            <p style={{ margin: '0 0 20px', fontSize: '13px', color: C.text, lineHeight: '1.6', background: C.bg, padding: '12px 14px', borderRadius: '10px', border: '1px solid ' + C.border }}>
+              ¿Eliminar <strong>todos los mensajes</strong> de esta conversación con <strong>{otherUser.full_name.split(' ')[0]}</strong>? Se borrará el historial completo para ambos.
+            </p>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button
+                onClick={() => setShowClearConfirm(false)}
+                style={{ flex: 1, padding: '10px', borderRadius: '12px', border: '1.5px solid ' + C.border, background: 'transparent', color: C.muted, fontSize: '13px', fontWeight: '600', cursor: 'pointer' }}>
+                Cancelar
+              </button>
+              <button
+                onClick={handleClearChat}
+                style={{ flex: 1, padding: '10px', borderRadius: '12px', border: 'none', background: 'linear-gradient(135deg, #DC2626, #EF4444)', color: '#fff', fontSize: '13px', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                <Trash size={13} /> Vaciar chat
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Header ── */}
+      <div style={{ padding: '14px 20px', borderBottom: '1px solid ' + C.border, display: 'flex', alignItems: 'center', gap: 12, background: C.surface, zIndex: 10 }}>
         <button onClick={onBack} style={{ background: C.bg, border: '1px solid ' + C.border, borderRadius: '8px', padding: '6px', cursor: 'pointer', color: C.muted, display: 'flex', flexShrink: 0 }}
           onMouseEnter={e => { e.currentTarget.style.background = C.accentLt; e.currentTarget.style.color = C.navy; }}
           onMouseLeave={e => { e.currentTarget.style.background = C.bg; e.currentTarget.style.color = C.muted; }}>
@@ -1200,9 +1305,8 @@ function DMConversation({ otherUser, currentUserId, currentProfile, onBack }) {
           <div style={{ fontSize: '14px', fontWeight: '800', color: C.navy }}>{otherUser.full_name}</div>
           <div style={{ fontSize: '11px', color: C.muted }}>{otherUser.cargo}</div>
         </div>
-        {/* Vaciar chat button */}
         <button
-          onClick={handleClearChat}
+          onClick={() => setShowClearConfirm(true)}
           disabled={clearingChat || messages.length === 0}
           style={{
             display: 'flex', alignItems: 'center', gap: 5,
@@ -1215,9 +1319,8 @@ function DMConversation({ otherUser, currentUserId, currentProfile, onBack }) {
             opacity: messages.length === 0 ? 0.5 : 1,
             transition: 'all 0.15s',
           }}
-          onMouseEnter={e => { if (messages.length > 0) { e.currentTarget.style.background = C.dangerLt; } }}
-          onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
-        >
+          onMouseEnter={e => { if (messages.length > 0) e.currentTarget.style.background = C.dangerLt; }}
+          onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}>
           {clearingChat
             ? <Loader2 size={11} style={{ animation: 'spin 1s linear infinite' }} />
             : <Trash size={11} />
@@ -1226,7 +1329,7 @@ function DMConversation({ otherUser, currentUserId, currentProfile, onBack }) {
         </button>
       </div>
 
-      {/* Messages */}
+      {/* ── Messages ── */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px', display: 'flex', flexDirection: 'column' }}>
         {loading ? (
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -1251,20 +1354,29 @@ function DMConversation({ otherUser, currentUserId, currentProfile, onBack }) {
                 </div>
               );
             }
-            const msg = item.data;
-            const isMe = msg.sender_id === currentUserId;
+
+            const msg        = item.data;
+            const isMe       = msg.sender_id === currentUserId;
             const consecutive = isConsecutive(idx);
+            const msgReactions = reactions[msg.id] || {};
+            const hasReactions = Object.keys(msgReactions).some(e => (msgReactions[e] || []).length > 0);
+
             return (
               <div key={msg.id}
                 style={{ display: 'flex', flexDirection: isMe ? 'row-reverse' : 'row', gap: 10, marginTop: consecutive ? 3 : 14, alignItems: 'flex-end' }}
                 onMouseEnter={() => setHoveredMsg(msg.id)}
-                onMouseLeave={() => setHoveredMsg(null)}>
+                onMouseLeave={() => { setHoveredMsg(null); }}>
+
                 <div style={{ width: 32, flexShrink: 0 }}>
                   {!consecutive && (
-                    <Avatar name={isMe ? currentProfile?.full_name || '' : otherUser.full_name} size={32}
-                      photoUrl={isMe ? currentProfile?.avatar_url : otherUser.avatar_url} />
+                    <Avatar
+                      name={isMe ? currentProfile?.full_name || '' : otherUser.full_name}
+                      size={32}
+                      photoUrl={isMe ? currentProfile?.avatar_url : otherUser.avatar_url}
+                    />
                   )}
                 </div>
+
                 <div style={{ maxWidth: '65%', display: 'flex', flexDirection: 'column', alignItems: isMe ? 'flex-end' : 'flex-start' }}>
                   {!consecutive && (
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3, flexDirection: isMe ? 'row-reverse' : 'row' }}>
@@ -1272,7 +1384,10 @@ function DMConversation({ otherUser, currentUserId, currentProfile, onBack }) {
                       <span style={{ fontSize: '10px', color: C.mutedLt }}>{formatTime(msg.created_at)}</span>
                     </div>
                   )}
+
                   <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 6, flexDirection: isMe ? 'row-reverse' : 'row' }}>
+
+                    {/* Bubble */}
                     <div style={{
                       padding: '9px 14px',
                       borderRadius: consecutive
@@ -1285,31 +1400,24 @@ function DMConversation({ otherUser, currentUserId, currentProfile, onBack }) {
                       boxShadow: isMe ? '0 2px 8px rgba(37,99,235,0.20)' : '0 1px 3px rgba(27,58,107,0.06)',
                       wordBreak: 'break-word', whiteSpace: 'pre-wrap', maxWidth: '100%',
                     }}>
-                      {/* IMAGE preview */}
+                      {/* IMAGE */}
                       {msg.file_url && isImage(msg.file_type) && (
                         <div style={{ marginBottom: msg.content ? 8 : 0 }}>
-                          <img
-                            src={msg.file_url}
-                            alt={msg.file_name || 'imagen'}
+                          <img src={msg.file_url} alt={msg.file_name || 'imagen'}
                             style={{ maxWidth: '220px', maxHeight: '200px', borderRadius: '10px', display: 'block', objectFit: 'cover', cursor: 'pointer' }}
-                            onClick={() => window.open(msg.file_url, '_blank')}
-                          />
+                            onClick={() => window.open(msg.file_url, '_blank')} />
                         </div>
                       )}
                       {/* NON-IMAGE file */}
                       {msg.file_url && !isImage(msg.file_type) && (
-                        <a
-                          href={msg.file_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
+                        <a href={msg.file_url} target="_blank" rel="noopener noreferrer"
                           style={{
                             display: 'flex', alignItems: 'center', gap: 8,
                             padding: '8px 10px', borderRadius: '8px',
                             background: isMe ? 'rgba(255,255,255,0.15)' : C.surface,
                             border: '1px solid ' + (isMe ? 'rgba(255,255,255,0.2)' : C.border),
                             textDecoration: 'none', marginBottom: msg.content ? 8 : 0,
-                          }}
-                        >
+                          }}>
                           <FileText size={16} color={isMe ? '#fff' : C.accent} />
                           <span style={{ fontSize: '12px', fontWeight: '600', color: isMe ? '#fff' : C.navy, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '160px' }}>
                             {msg.file_name}
@@ -1319,13 +1427,98 @@ function DMConversation({ otherUser, currentUserId, currentProfile, onBack }) {
                       )}
                       {msg.content && <span>{msg.content}</span>}
                     </div>
-                    {isMe && hoveredMsg === msg.id && (
-                      <button onClick={() => handleDelete(msg.id)}
-                        style={{ background: C.dangerLt, border: '1px solid #FECACA', borderRadius: '6px', padding: '4px', cursor: 'pointer', color: C.danger, display: 'flex', flexShrink: 0 }}>
-                        <Trash2 size={11} />
-                      </button>
+
+                    {/* Action buttons on hover */}
+                    {hoveredMsg === msg.id && (
+                      <div style={{ display: 'flex', gap: 4, flexDirection: isMe ? 'row-reverse' : 'row', alignItems: 'center' }}>
+                        {/* Emoji reaction button */}
+                        <div style={{ position: 'relative' }}>
+                          <button
+                            onClick={e => { e.stopPropagation(); setReactionPicker(prev => prev === msg.id ? null : msg.id); }}
+                            style={{ background: C.bg, border: '1px solid ' + C.border, borderRadius: '8px', padding: '4px 7px', cursor: 'pointer', color: C.muted, fontSize: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.1s' }}
+                            onMouseEnter={e => { e.currentTarget.style.background = C.accentLt; e.currentTarget.style.borderColor = C.accent; }}
+                            onMouseLeave={e => { e.currentTarget.style.background = C.bg; e.currentTarget.style.borderColor = C.border; }}
+                            title="Reaccionar">
+                            😊
+                          </button>
+                          {/* Emoji picker */}
+                          {reactionPicker === msg.id && (
+                            <div onClick={e => e.stopPropagation()} style={{
+                              position: 'absolute',
+                              bottom: 'calc(100% + 8px)',
+                              [isMe ? 'right' : 'left']: 0,
+                              background: C.surface,
+                              borderRadius: '16px',
+                              border: '1.5px solid ' + C.border,
+                              boxShadow: '0 8px 32px rgba(27,58,107,0.18)',
+                              padding: '10px 12px',
+                              display: 'flex', gap: 6, flexWrap: 'wrap',
+                              width: 'max-content', maxWidth: '240px',
+                              zIndex: 30,
+                              animation: 'slideDown 0.1s ease-out',
+                            }}>
+                              {EMOJI_LIST.map(emoji => {
+                                const alreadyReacted = (msgReactions[emoji] || []).includes(currentUserId);
+                                return (
+                                  <button key={emoji}
+                                    onClick={e => handleReaction(msg.id, emoji, e)}
+                                    style={{
+                                      background: alreadyReacted ? C.accentLt : 'transparent',
+                                      border: alreadyReacted ? ('1.5px solid ' + C.accent) : '1.5px solid transparent',
+                                      borderRadius: '10px', padding: '5px 7px',
+                                      cursor: 'pointer', fontSize: '18px',
+                                      transition: 'all 0.1s', lineHeight: 1,
+                                    }}
+                                    onMouseEnter={e => { if (!alreadyReacted) { e.currentTarget.style.background = C.bg; e.currentTarget.style.transform = 'scale(1.2)'; } }}
+                                    onMouseLeave={e => { if (!alreadyReacted) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.transform = 'scale(1)'; } }}>
+                                    {emoji}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Delete button (only own messages) */}
+                        {isMe && (
+                          <button onClick={() => handleDelete(msg.id)}
+                            style={{ background: C.dangerLt, border: '1px solid #FECACA', borderRadius: '6px', padding: '4px 6px', cursor: 'pointer', color: C.danger, display: 'flex', flexShrink: 0 }}>
+                            <Trash2 size={11} />
+                          </button>
+                        )}
+                      </div>
                     )}
                   </div>
+
+                  {/* Reactions display */}
+                  {hasReactions && (
+                    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 4, flexDirection: isMe ? 'row-reverse' : 'row' }}>
+                      {Object.entries(msgReactions)
+                        .filter(([, users]) => users.length > 0)
+                        .map(([emoji, users]) => {
+                          const iMine = users.includes(currentUserId);
+                          return (
+                            <button key={emoji}
+                              onClick={e => handleReaction(msg.id, emoji, e)}
+                              title={users.length + ' reacción(es)'}
+                              style={{
+                                display: 'flex', alignItems: 'center', gap: 3,
+                                padding: '2px 7px', borderRadius: '20px',
+                                background: iMine ? C.accentLt : C.bg,
+                                border: '1.5px solid ' + (iMine ? C.accent : C.border),
+                                cursor: 'pointer', fontSize: '13px', fontWeight: '700',
+                                color: C.navy, transition: 'all 0.1s',
+                              }}
+                              onMouseEnter={e => { e.currentTarget.style.transform = 'scale(1.08)'; }}
+                              onMouseLeave={e => { e.currentTarget.style.transform = 'scale(1)'; }}>
+                              <span>{emoji}</span>
+                              {users.length > 1 && <span style={{ fontSize: '10px', color: C.muted }}>{users.length}</span>}
+                            </button>
+                          );
+                        })}
+                    </div>
+                  )}
+
                   {isMe && idx === items.length - 1 && (
                     <div style={{ fontSize: '9px', color: msg.read ? C.accent : C.mutedLt, marginTop: 2, textAlign: 'right', paddingRight: 4 }}>
                       {msg.read ? '✓✓ Visto' : '✓ Enviado'}
@@ -1342,7 +1535,7 @@ function DMConversation({ otherUser, currentUserId, currentProfile, onBack }) {
         <div ref={bottomRef} />
       </div>
 
-      {/* Input */}
+      {/* ── Input ── */}
       <div style={{ padding: '14px 18px', borderTop: '1px solid ' + C.border, background: C.surface }}>
         {selectedFile && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', marginBottom: 8, background: C.accentLt, borderRadius: '10px', border: '1px solid ' + C.border }}>
@@ -1363,11 +1556,13 @@ function DMConversation({ otherUser, currentUserId, currentProfile, onBack }) {
             </button>
           </div>
         )}
+
         <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', background: C.bg, borderRadius: '16px', border: '1.5px solid ' + C.border, padding: '8px 8px 8px 12px', transition: 'border-color 0.15s' }}
           onFocusCapture={e => e.currentTarget.style.borderColor = C.blue}
           onBlurCapture={e => e.currentTarget.style.borderColor = C.border}>
-          {/* Accept ALL file types */}
-          <input ref={fileRef} type="file" accept="image/*,.pdf,.xlsx,.xls,.csv,.doc,.docx,.txt,.zip,.rar,.ppt,.pptx" style={{ display: 'none' }}
+          <input ref={fileRef} type="file"
+            accept="image/*,.pdf,.xlsx,.xls,.csv,.doc,.docx,.txt,.zip,.rar,.ppt,.pptx"
+            style={{ display: 'none' }}
             onChange={e => { const f = e.target.files[0]; if (f) setSelectedFile(f); e.target.value = ''; }} />
           <button onClick={() => fileRef.current?.click()}
             style={{ width: 34, height: 34, borderRadius: '10px', border: 'none', background: selectedFile ? C.accentLt : 'transparent', color: selectedFile ? C.blue : C.mutedLt, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0, transition: 'all 0.15s' }}
@@ -1379,12 +1574,28 @@ function DMConversation({ otherUser, currentUserId, currentProfile, onBack }) {
             placeholder={'Mensaje a ' + otherUser.full_name.split(' ')[0] + '...'} rows={1}
             style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', resize: 'none', fontFamily: 'inherit', fontSize: '13px', color: C.text, lineHeight: '1.5', maxHeight: '120px', overflowY: 'auto', padding: '4px 0' }}
             onInput={e => { e.target.style.height = 'auto'; e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px'; }} />
-          <button onClick={handleSend} disabled={(!text.trim() && !selectedFile) || sending || uploadingFile}
-            style={{ width: 38, height: 38, borderRadius: '12px', border: 'none', background: (text.trim() || selectedFile) && !sending && !uploadingFile ? ('linear-gradient(135deg, ' + C.navy + ' 0%, ' + C.blue + ' 100%)') : C.border, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: (text.trim() || selectedFile) && !sending && !uploadingFile ? 'pointer' : 'not-allowed', flexShrink: 0, transition: 'all 0.15s' }}>
-            {sending || uploadingFile ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <Send size={14} />}
+          {/* Send button — active if text OR file */}
+          <button onClick={handleSend}
+            disabled={(!text.trim() && !selectedFile) || sending || uploadingFile}
+            style={{
+              width: 38, height: 38, borderRadius: '12px', border: 'none',
+              background: (text.trim() || selectedFile) && !sending && !uploadingFile
+                ? ('linear-gradient(135deg, ' + C.navy + ' 0%, ' + C.blue + ' 100%)')
+                : C.border,
+              color: '#fff',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              cursor: (text.trim() || selectedFile) && !sending && !uploadingFile ? 'pointer' : 'not-allowed',
+              flexShrink: 0, transition: 'all 0.15s',
+            }}>
+            {sending || uploadingFile
+              ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} />
+              : <Send size={14} />
+            }
           </button>
         </div>
-        <div style={{ fontSize: '10px', color: C.mutedLt, marginTop: 5, paddingLeft: 4 }}>Enter para enviar · Shift+Enter para nueva línea · 📎 para adjuntar</div>
+        <div style={{ fontSize: '10px', color: C.mutedLt, marginTop: 5, paddingLeft: 4 }}>
+          Enter para enviar · Shift+Enter para nueva línea · 📎 para adjuntar
+        </div>
       </div>
     </div>
   );
