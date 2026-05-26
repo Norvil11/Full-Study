@@ -790,22 +790,77 @@ function NewTaskModal({ profiles, currentUserId, onClose, onCreated, preAssignTo
 
 // ─── STAT CARD ────────────────────────────────────────────────────────────────
 function StatCard({ icon: Icon, label, value, iconColor, iconBg, accent, sublabel }) {
+  const total = 20; // referencia visual para la barra
+  const pct = Math.min(100, Math.round((value / Math.max(value + 1, total)) * 100));
+
   return (
     <div style={{
-      background: C.surface, border: `1.5px solid ${C.border}`, borderRadius: '18px', padding: '20px 22px',
-      display: 'flex', alignItems: 'center', gap: '16px',
-      boxShadow: '0 2px 8px rgba(27,58,107,0.07)', borderTop: `4px solid ${accent}`,
-      transition: 'box-shadow 0.2s, transform 0.15s', flex: 1, minWidth: 0,
+      background: C.surface,
+      border: `1.5px solid ${C.border}`,
+      borderRadius: '20px',
+      padding: '22px 24px 18px',
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '14px',
+      flex: 1,
+      minWidth: 0,
+      position: 'relative',
+      overflow: 'hidden',
+      boxShadow: '0 2px 12px rgba(27,58,107,0.07)',
+      transition: 'box-shadow 0.2s, transform 0.15s',
     }}
-      onMouseEnter={e => { e.currentTarget.style.boxShadow = '0 6px 20px rgba(27,58,107,0.13)'; e.currentTarget.style.transform = 'translateY(-2px)'; }}
-      onMouseLeave={e => { e.currentTarget.style.boxShadow = '0 2px 8px rgba(27,58,107,0.07)'; e.currentTarget.style.transform = 'translateY(0)'; }}>
-      <div style={{ width: 52, height: 52, borderRadius: '15px', background: iconBg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxShadow: `0 4px 12px ${iconBg}` }}>
-        <Icon size={22} color={iconColor} />
+      onMouseEnter={e => { e.currentTarget.style.boxShadow = '0 8px 28px rgba(27,58,107,0.14)'; e.currentTarget.style.transform = 'translateY(-2px)'; }}
+      onMouseLeave={e => { e.currentTarget.style.boxShadow = '0 2px 12px rgba(27,58,107,0.07)'; e.currentTarget.style.transform = 'translateY(0)'; }}
+    >
+      {/* Accent stripe top */}
+      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '3px', background: `linear-gradient(90deg, ${accent}, ${accent}88)`, borderRadius: '20px 20px 0 0' }} />
+
+      {/* Decorative bg circle */}
+      <div style={{ position: 'absolute', top: -24, right: -20, width: 88, height: 88, borderRadius: '50%', background: `${accent}10`, pointerEvents: 'none' }} />
+
+      {/* Header row */}
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+        <div style={{
+          width: 44, height: 44, borderRadius: '13px',
+          background: iconBg,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          flexShrink: 0,
+          boxShadow: `0 4px 12px ${accent}28`,
+        }}>
+          <Icon size={20} color={iconColor} />
+        </div>
+        <div style={{
+          fontSize: '10px', fontWeight: '700', color: accent,
+          background: `${accent}14`,
+          padding: '3px 9px', borderRadius: '20px',
+          letterSpacing: '0.04em', textTransform: 'uppercase',
+          border: `1px solid ${accent}30`,
+        }}>
+          {sublabel || 'Total'}
+        </div>
       </div>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: '32px', fontWeight: '900', color: C.navy, letterSpacing: '-0.04em', lineHeight: 1 }}>{value}</div>
-        <div style={{ fontSize: '12px', color: C.muted, marginTop: 4, fontWeight: '600' }}>{label}</div>
-        {sublabel && <div style={{ fontSize: '10px', color: C.mutedLt, marginTop: 2 }}>{sublabel}</div>}
+
+      {/* Number */}
+      <div>
+        <div style={{
+          fontSize: '42px', fontWeight: '900', color: C.navy,
+          letterSpacing: '-0.05em', lineHeight: 1,
+        }}>{value}</div>
+        <div style={{ fontSize: '12px', color: C.muted, fontWeight: '600', marginTop: 5 }}>{label}</div>
+      </div>
+
+      {/* Progress bar */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <div style={{ height: 5, background: `${accent}18`, borderRadius: '10px', overflow: 'hidden' }}>
+          <div style={{
+            height: '100%',
+            width: value > 0 ? `${Math.min(100, (value / 15) * 100)}%` : '4px',
+            background: `linear-gradient(90deg, ${accent}, ${accent}aa)`,
+            borderRadius: '10px',
+            transition: 'width 0.6s cubic-bezier(0.34, 1.56, 0.64, 1)',
+            minWidth: value > 0 ? undefined : '4px',
+          }} />
+        </div>
       </div>
     </div>
   );
@@ -1714,6 +1769,7 @@ function ChatView({ profiles, currentUserId, currentProfile }) {
 // ─── MAIN APP ─────────────────────────────────────────────────────────────────
 export default function App() {
   // Busque los useState de App y agregue esta línea:
+  const [mainView,      setMainView]      = useState('tickets');
   const [totalUnreadDMs, setTotalUnreadDMs] = useState(0);
   const [session,       setSession]       = useState(null);
   const [profile,       setProfile]       = useState(null);
@@ -1939,27 +1995,110 @@ export default function App() {
           select option{background:${C.surface};color:${C.text}}
         `}</style>
 
-        {/* NAVBAR */}
-        <header style={{ width: '100%', height: '64px', background: C.surface, borderBottom: `1.5px solid ${C.border}`, padding: '0 28px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'sticky', top: 0, zIndex: 100, boxShadow: '0 2px 12px rgba(27,58,107,0.08)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <div style={{ width: 36, height: 36, borderRadius: '10px', overflow: 'hidden', border: `1.5px solid ${C.border}`, flexShrink: 0 }}>
-              <img src={LOGO_URL} alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={e => { e.target.style.display = 'none'; }} />
+       {/* NAVBAR */}
+        <header style={{
+          width: '100%', height: '64px',
+          background: C.surface,
+          borderBottom: `1.5px solid ${C.border}`,
+          padding: '0 24px',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          position: 'sticky', top: 0, zIndex: 100,
+          boxShadow: '0 1px 0 rgba(226,232,240,1), 0 4px 20px rgba(27,58,107,0.06)',
+        }}>
+          {/* LEFT: Logo + Main Nav Tabs */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 0 }}>
+            {/* Logo */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginRight: 28 }}>
+              <div style={{ width: 34, height: 34, borderRadius: '10px', overflow: 'hidden', border: `1.5px solid ${C.border}`, flexShrink: 0 }}>
+                <img src={LOGO_URL} alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={e => { e.target.style.display = 'none'; }} />
+              </div>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 3 }}>
+                <span style={{ fontWeight: '900', fontSize: '15px', color: C.navy, letterSpacing: '-0.02em' }}>Hanter</span>
+                <span style={{ fontWeight: '400', fontSize: '15px', color: C.accent }}>Workspace</span>
+              </div>
             </div>
-            <div>
-              <span style={{ fontWeight: '800', fontSize: '15px', color: C.navy }}>Hanter</span>
-              <span style={{ fontWeight: '400', fontSize: '15px', color: C.accent, marginLeft: 4 }}>Workspace</span>
-            </div>
+
+            {/* Divider */}
+            <div style={{ width: 1, height: 28, background: C.border, marginRight: 20 }} />
+            
+
+            {/* Main nav tabs */}
+            {[
+              { id: 'tickets',     label: 'Tickets'       },
+              { id: 'team',        label: 'Equipo'        },
+              { id: 'analytics',   label: 'Estadísticas'  },
+            ].map(({ id, label }) => {
+              const isActive = mainView === id;
+              return (
+                <button key={id} onClick={() => setMainView(id)}
+                  style={{
+                    padding: '6px 16px',
+                    border: 'none',
+                    background: 'transparent',
+                    color: isActive ? C.navy : C.muted,
+                    fontWeight: isActive ? '700' : '500',
+                    fontSize: '13px',
+                    cursor: 'pointer',
+                    fontFamily: 'inherit',
+                    position: 'relative',
+                    height: '64px',
+                    display: 'flex', alignItems: 'center',
+                    transition: 'color 0.15s',
+                    borderBottom: isActive ? `2.5px solid ${C.blue}` : '2.5px solid transparent',
+                  }}
+                  onMouseEnter={e => { if (!isActive) e.currentTarget.style.color = C.navy; }}
+                  onMouseLeave={e => { if (!isActive) e.currentTarget.style.color = C.muted; }}>
+                  {label}
+                </button>
+              );
+            })}
+          <div style={{ width: 1, height: 28, background: C.border, marginLeft: 8 }} />
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          {/* RIGHT: Messages + Notifications + Logout */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+
+            {/* Messages icon */}
+            <button
+              onClick={() => setMainView('chat')}
+              title="Mensajes"
+              style={{
+                position: 'relative', display: 'flex', alignItems: 'center', gap: 6,
+                background: mainView === 'chat' ? C.accentLt : C.bg,
+                border: `1.5px solid ${mainView === 'chat' ? C.blue : C.border}`,
+                borderRadius: '10px', padding: '6px 10px',
+                cursor: 'pointer', color: mainView === 'chat' ? C.navy : C.muted,
+                fontSize: '12px', fontWeight: '600', transition: 'all 0.15s',
+              }}
+              onMouseEnter={e => { if (mainView !== 'chat') { e.currentTarget.style.borderColor = C.accent; e.currentTarget.style.background = C.accentLt; e.currentTarget.style.color = C.navy; } }}
+              onMouseLeave={e => { if (mainView !== 'chat') { e.currentTarget.style.borderColor = C.border; e.currentTarget.style.background = C.bg; e.currentTarget.style.color = C.muted; } }}>
+              <MessageCircle size={15} />
+              {totalUnreadDMs > 0 && (
+                <span style={{ background: C.danger, color: '#fff', borderRadius: '20px', padding: '1px 6px', fontSize: '9px', fontWeight: '800', lineHeight: '14px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minWidth: 16, boxShadow: `0 2px 6px ${C.danger}55` }}>
+                  {totalUnreadDMs > 9 ? '9+' : totalUnreadDMs}
+                </span>
+              )}
+            </button>
+
             {/* Notifications */}
             <div style={{ position: 'relative' }}>
-              <button onClick={() => { setShowNotifs(v => !v); setShowProfileMenu(false); if (!showNotifs) markNotifsRead(); }}
-                style={{ position: 'relative', background: C.bg, border: `1.5px solid ${C.border}`, borderRadius: '10px', padding: '7px', cursor: 'pointer', color: C.navy, display: 'flex', transition: 'all 0.15s' }}
-                onMouseEnter={e => e.currentTarget.style.borderColor = C.accent}
-                onMouseLeave={e => e.currentTarget.style.borderColor = C.border}>
-                <Bell size={17} />
-                {unread > 0 && <span style={{ position: 'absolute', top: -4, right: -4, background: C.danger, color: '#fff', borderRadius: '50%', width: 17, height: 17, fontSize: '9px', fontWeight: '700', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{unread > 9 ? '9+' : unread}</span>}
+              <button onClick={() => { setShowNotifs(v => !v); if (!showNotifs) markNotifsRead(); }}
+                style={{
+                  position: 'relative', display: 'flex', alignItems: 'center', gap: 6,
+                  background: showNotifs ? C.accentLt : C.bg,
+                  border: `1.5px solid ${showNotifs ? C.blue : C.border}`,
+                  borderRadius: '10px', padding: '6px 10px',
+                  cursor: 'pointer', color: showNotifs ? C.navy : C.muted,
+                  fontSize: '12px', fontWeight: '600', transition: 'all 0.15s',
+                }}
+                onMouseEnter={e => { if (!showNotifs) { e.currentTarget.style.borderColor = C.accent; e.currentTarget.style.background = C.accentLt; e.currentTarget.style.color = C.navy; } }}
+                onMouseLeave={e => { if (!showNotifs) { e.currentTarget.style.borderColor = C.border; e.currentTarget.style.background = C.bg; e.currentTarget.style.color = C.muted; } }}>
+                <Bell size={15} />
+                {unread > 0 ? (
+                  <span style={{ background: C.danger, color: '#fff', borderRadius: '20px', padding: '1px 6px', fontSize: '9px', fontWeight: '800', lineHeight: '14px', display: 'inline-flex', alignItems: 'center', minWidth: 16, boxShadow: `0 2px 6px ${C.danger}55` }}>{unread > 9 ? '9+' : unread}</span>
+                ) : (
+                  <span style={{ fontSize: '10px', color: C.mutedLt }}>Sin nuevas</span>
+                )}
               </button>
               {showNotifs && (
                 <div style={{ position: 'absolute', right: 0, top: '50px', background: C.surface, borderRadius: '16px', width: '310px', border: `1.5px solid ${C.border}`, boxShadow: '0 12px 40px rgba(27,58,107,0.15)', overflow: 'hidden', zIndex: 200, animation: 'slideDown 0.15s ease-out' }}>
@@ -1982,188 +2121,222 @@ export default function App() {
               )}
             </div>
 
-            {/* Profile button */}
-            {profile && (
-              <div style={{ position: 'relative' }}>
-                <button
-                  onClick={() => { setShowProfileMenu(v => !v); setShowNotifs(false); }}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 8,
-                    padding: '5px 10px 5px 5px', borderRadius: '100px',
-                    border: `1.5px solid ${showProfileMenu ? C.blue : C.border}`,
-                    background: showProfileMenu ? C.accentLt : C.bg,
-                    cursor: 'pointer', transition: 'all 0.15s',
-                  }}
-                  onMouseEnter={e => { if (!showProfileMenu) { e.currentTarget.style.borderColor = C.accent; e.currentTarget.style.background = C.accentLt; } }}
-                  onMouseLeave={e => { if (!showProfileMenu) { e.currentTarget.style.borderColor = C.border; e.currentTarget.style.background = C.bg; } }}
-                >
-                  <Avatar name={profile.full_name} size={30} photoUrl={profile.avatar_url} />
-                  <div style={{ lineHeight: '1.2', textAlign: 'left' }}>
-                    <div style={{ fontSize: '12px', fontWeight: '700', color: C.navy }}>{profile.full_name}</div>
-                    <div style={{ fontSize: '10px', color: C.muted }}>{profile.cargo}</div>
-                  </div>
-                  <ChevronDown size={12} color={C.muted} style={{ marginLeft: 2, transform: showProfileMenu ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }} />
-                </button>
+            <div style={{ width: 1, height: 28, background: C.border, flexShrink: 0 }} />
 
-                {showProfileMenu && (
-                  <ProfileMenu
-                    profile={profile}
-                    currentUserId={session.user.id}
-                    onClose={() => setShowProfileMenu(false)}
-                    onProfileUpdated={handleProfileUpdated}
-                  />
-                )}
-              </div>
-            )}
-
-            <button onClick={() => supabase.auth.signOut()}
-              style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '12px', background: C.bg, border: `1.5px solid ${C.border}`, color: C.muted, padding: '7px 14px', borderRadius: '20px', cursor: 'pointer', fontWeight: '600', transition: 'all 0.15s' }}
+            {/* Logout */}
+            <button onClick={() => supabase.auth.signOut()} title="Cerrar sesión"
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 36, height: 36, background: 'transparent', border: `1.5px solid ${C.border}`, color: C.mutedLt, borderRadius: '10px', cursor: 'pointer', transition: 'all 0.15s', flexShrink: 0 }}
               onMouseEnter={e => { e.currentTarget.style.background = C.dangerLt; e.currentTarget.style.borderColor = '#FECACA'; e.currentTarget.style.color = C.danger; }}
-              onMouseLeave={e => { e.currentTarget.style.background = C.bg; e.currentTarget.style.borderColor = C.border; e.currentTarget.style.color = C.muted; }}>
-              <LogOut size={13} /> Salir
+              onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = C.border; e.currentTarget.style.color = C.mutedLt; }}>
+              <LogOut size={14} />
             </button>
           </div>
         </header>
 
-        {/* MAIN */}
-        <main style={{ maxWidth: '1300px', margin: '0 auto', padding: '32px 28px', animation: 'fadeUp 0.4s ease-out' }}>
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 20, marginBottom: 28, flexWrap: 'wrap' }}>
-            {/* Tab navigation */}
-            <div style={{ background: C.surface, borderRadius: '14px', padding: '5px', display: 'flex', flexDirection: 'column', gap: 3, border: `1.5px solid ${C.border}`, boxShadow: '0 2px 8px rgba(27,58,107,0.07)', minWidth: 180, flexShrink: 0 }}>
-              {TAB_CONFIG.map(({ id, label, icon: Ic }) => (
-                <button key={id} onClick={() => setActiveTab(id)}
-                  style={{
-                    padding: '9px 14px', borderRadius: '10px', border: 'none',
-                    background: activeTab === id ? `linear-gradient(135deg, ${C.navy} 0%, ${C.blue} 100%)` : 'transparent',
-                    color: activeTab === id ? '#fff' : C.muted,
-                    fontWeight: activeTab === id ? '700' : '500',
-                    fontSize: '12px', cursor: 'pointer', transition: 'all 0.15s',
-                    display: 'flex', alignItems: 'center', gap: 8, textAlign: 'left',
-                    boxShadow: activeTab === id ? '0 3px 10px rgba(37,99,235,0.25)' : 'none',
-                  }}
-                  onMouseEnter={e => { if (activeTab !== id) { e.currentTarget.style.background = C.accentLt; e.currentTarget.style.color = C.navy; } }}
-                  onMouseLeave={e => { if (activeTab !== id) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = C.muted; } }}
-                >
-                  <Ic size={13} />
-                  <span style={{ flex: 1 }}>{label}</span>
-                  {id === 'chat' && totalUnreadDMs > 0 && (
-                    <span style={{
-                      background: C.danger,
-                      color: '#fff',
-                      borderRadius: '20px',
-                      padding: '2px 8px',
-                      fontSize: '10px',
-                      fontWeight: '700',
-                      lineHeight: 1,
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      justifyContent: 'center'
-                    }}>
-                      {totalUnreadDMs}
-                    </span>
-                  )}
-                </button>
-              ))}
-            </div>
-
-            {/* Stat cards + New task button */}
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 14, minWidth: 0 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                  <div style={{ fontSize: '11px', color: C.muted, fontWeight: '500', marginBottom: 2 }}>{profile?.cargo}</div>
-                </div>
-                {!isChatView && (
-                  <button onClick={() => { setPreAssignTo(null); setShowNewTask(true); }}
-                    style={{ padding: '10px 22px', background: `linear-gradient(135deg, ${C.navy} 0%, ${C.blue} 100%)`, color: '#fff', border: 'none', borderRadius: '20px', fontSize: '13px', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, boxShadow: '0 4px 16px rgba(37,99,235,0.30)', transition: 'all 0.15s', flexShrink: 0 }}
-                    onMouseEnter={e => e.currentTarget.style.opacity = '0.88'}
-                    onMouseLeave={e => e.currentTarget.style.opacity = '1'}>
-                    <Plus size={16} /> Nueva Tarea
-                  </button>
-                )}
+        {/* Profile modal — centered overlay, triggered from sidebar pencil */}
+          {showProfileMenu && profile && (
+            <>
+              <div
+                onClick={() => setShowProfileMenu(false)}
+                style={{ position: 'fixed', inset: 0, background: 'rgba(10,15,30,0.55)', backdropFilter: 'blur(4px)', zIndex: 299 }}
+              />
+              <div style={{
+                position: 'fixed',
+                top: '50%', left: '50%',
+                transform: 'translate(-50%, -50%)',
+                zIndex: 300,
+              }}>
+                <ProfileMenu
+                  profile={profile}
+                  currentUserId={session.user.id}
+                  onClose={() => setShowProfileMenu(false)}
+                  onProfileUpdated={handleProfileUpdated}
+                />
               </div>
-              {!isChatView && (
-                <div style={{ display: 'flex', gap: 14 }}>
+            </>
+          )}
+
+        {/* MAIN */}
+        <div style={{ display: 'flex', minHeight: 'calc(100vh - 64px)' }}>
+
+          {/* Sidebar — only when mainView === 'tickets' */}
+          {mainView === 'tickets' && (
+            <>
+              {/* Tab navigation + Profile sidebar — FIXED */}
+              <div style={{
+                position: 'fixed', top: '64px', left: 0, bottom: 0, width: '220px',
+                background: `linear-gradient(180deg, ${C.navy} 0%, #0f2347 60%, #0a1a35 100%)`,
+                borderRight: '1.5px solid rgba(255,255,255,0.07)',
+                boxShadow: '4px 0 24px rgba(11,25,58,0.25)',
+                display: 'flex', flexDirection: 'column', overflow: 'hidden', zIndex: 90,
+              }}>
+                <div style={{ position: 'absolute', top: -30, left: '50%', transform: 'translateX(-50%)', width: 140, height: 70, borderRadius: '50%', background: `${C.blue}22`, filter: 'blur(24px)', pointerEvents: 'none' }} />
+
+                {/* Profile */}
+                <div style={{ padding: '24px 16px 20px', borderBottom: '1px solid rgba(255,255,255,0.08)', textAlign: 'center' }}>
+                  <div style={{ position: 'relative', display: 'inline-block', marginBottom: 12 }}>
+                    <div style={{ width: 72, height: 72, borderRadius: '50%', overflow: 'hidden', border: '3px solid rgba(255,255,255,0.2)', display: 'inline-block', boxShadow: '0 4px 16px rgba(0,0,0,0.3)' }}>
+                      {profile?.avatar_url ? (
+                        <img src={profile.avatar_url} alt={profile?.full_name} style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top center', display: 'block' }} />
+                      ) : (
+                        <div style={{ width: '100%', height: '100%', background: C.accentLt, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '22px', fontWeight: '800', color: C.navy }}>
+                          {initials(profile?.full_name || '')}
+                        </div>
+                      )}
+                    </div>
+                    <button onClick={() => setShowProfileMenu(true)}
+                      style={{ position: 'absolute', bottom: 0, right: 0, width: 22, height: 22, borderRadius: '50%', background: C.gold, border: '2px solid rgba(255,255,255,0.9)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', zIndex: 2 }}>
+                      <Edit2 size={10} color="#fff" />
+                    </button>
+                  </div>
+                  <div style={{ fontSize: '13px', fontWeight: '800', color: '#fff', lineHeight: 1.3, marginBottom: 4 }}>{profile?.full_name}</div>
+                  <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.45)', padding: '0 8px' }}>{profile?.cargo}</div>
+                </div>
+
+                {/* Sub-tabs */}
+                <div style={{ flex: 1, overflowY: 'auto', padding: '10px 8px 16px' }}>
+                  <div style={{ fontSize: '9px', fontWeight: '700', color: 'rgba(255,255,255,0.3)', letterSpacing: '0.12em', textTransform: 'uppercase', padding: '6px 8px 10px' }}>Navegación</div>
+                  {[
+                    { id: 'mine',      label: 'Mis Pendientes', icon: Clock           },
+                    { id: 'all',       label: 'Todas',          icon: LayoutDashboard },
+                    { id: 'created',   label: 'Creadas por mí', icon: Briefcase       },
+                    { id: 'completed', label: 'Completadas',    icon: CheckCircle2    },
+                  ].map(({ id, label, icon: Ic }) => {
+                    const isActive = activeTab === id;
+                    return (
+                      <button key={id} onClick={() => setActiveTab(id)}
+                        style={{
+                          width: '100%', padding: '9px 12px', borderRadius: '12px', border: 'none',
+                          background: isActive ? `linear-gradient(135deg, ${C.blue}cc 0%, ${C.accent}99 100%)` : 'transparent',
+                          color: isActive ? '#fff' : 'rgba(255,255,255,0.45)',
+                          fontWeight: isActive ? '700' : '500', fontSize: '12px', cursor: 'pointer',
+                          transition: 'all 0.18s', display: 'flex', alignItems: 'center', gap: 10,
+                          textAlign: 'left', marginBottom: 2,
+                          boxShadow: isActive ? `0 4px 14px ${C.blue}55` : 'none',
+                          borderLeft: isActive ? `3px solid ${C.accent}` : '3px solid transparent',
+                          fontFamily: 'inherit',
+                        }}
+                        onMouseEnter={e => { if (!isActive) { e.currentTarget.style.background = 'rgba(255,255,255,0.07)'; e.currentTarget.style.color = '#fff'; } }}
+                        onMouseLeave={e => { if (!isActive) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'rgba(255,255,255,0.45)'; } }}>
+                        <div style={{ width: 28, height: 28, borderRadius: '8px', background: isActive ? 'rgba(255,255,255,0.18)' : 'rgba(255,255,255,0.07)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                          <Ic size={13} color={isActive ? '#fff' : 'rgba(255,255,255,0.5)'} />
+                        </div>
+                        <span style={{ flex: 1 }}>{label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              {/* Spacer */}
+              <div style={{ width: '220px', flexShrink: 0 }} />
+            </>
+          )}
+
+          {/* CONTENT AREA */}
+          <main style={{ flex: 1, padding: '32px 28px', minWidth: 0, animation: 'fadeUp 0.4s ease-out' }}>
+
+            {/* Stat cards + New task button — only in tickets view */}
+            {mainView === 'tickets' && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24, gap: 16, flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', gap: 14, flex: 1, minWidth: 0 }}>
                   <StatCard icon={Clock} label="Mis Pendientes" value={myPending} iconColor={C.accent} iconBg={C.accentLt} accent={C.accent} sublabel="tareas sin completar" />
                   <StatCard icon={CheckCircle2} label="Completadas" value={myCompleted} iconColor={C.success} iconBg={C.successLt} accent={C.success} sublabel="tareas finalizadas" />
                   <StatCard icon={AlertCircle} label="Vencidas" value={overdueCount} iconColor={C.danger} iconBg={C.dangerLt} accent={C.danger} sublabel="requieren atención" />
                 </div>
-              )}
-            </div>
-          </div>
+                <button onClick={() => { setPreAssignTo(null); setShowNewTask(true); }}
+                  style={{ padding: '10px 22px', background: `linear-gradient(135deg, ${C.navy} 0%, ${C.blue} 100%)`, color: '#fff', border: 'none', borderRadius: '20px', fontSize: '13px', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, boxShadow: '0 4px 16px rgba(37,99,235,0.30)', transition: 'all 0.15s', flexShrink: 0 }}
+                  onMouseEnter={e => e.currentTarget.style.opacity = '0.88'}
+                  onMouseLeave={e => e.currentTarget.style.opacity = '1'}>
+                  <Plus size={16} /> Nueva Tarea
+                </button>
+              </div>
+            )}
 
-          {/* VIEWS */}
-          {isChatView ? (
-            <ChatView profiles={profiles} currentUserId={session.user.id} currentProfile={profile} />
-          ) : isLeaderboard ? (
-            <LeaderboardView tasks={tasks} profiles={profiles} />
-          ) : isTeamView ? (
-            <TeamView profiles={profiles} tasks={tasks} currentUserId={session.user.id} onAssignTask={(id) => { setPreAssignTo(id); setShowNewTask(true); }} />
-          ) : activeTab === 'mine' ? (
-            // "Mis Pendientes" — solo 2 columnas: Por Hacer y En Proceso
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 20 }}>
-              {STATUS_COLS_MINE.map(col => {
-                const colTasks = filteredTasks.filter(t => t.status === col.status);
-                return (
-                  <div key={col.status}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, padding: '10px 14px', background: C.surface, borderRadius: '12px', border: `1.5px solid ${C.border}` }}>
-                      <div style={{ width: 8, height: 8, borderRadius: '50%', background: col.dot, flexShrink: 0 }} />
-                      <h3 style={{ margin: 0, fontSize: '13px', fontWeight: '700', color: C.navy, flex: 1 }}>{col.label}</h3>
-                      <span style={{ background: col.tag, color: col.tagText, borderRadius: '20px', padding: '2px 9px', fontSize: '11px', fontWeight: '700' }}>{colTasks.length}</span>
+            {/* ── TICKETS VIEW ── */}
+            {mainView === 'tickets' && activeTab === 'mine' && (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 20 }}>
+                {STATUS_COLS_MINE.map(col => {
+                  const colTasks = filteredTasks.filter(t => t.status === col.status);
+                  return (
+                    <div key={col.status}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, padding: '10px 14px', background: C.surface, borderRadius: '12px', border: `1.5px solid ${C.border}` }}>
+                        <div style={{ width: 8, height: 8, borderRadius: '50%', background: col.dot, flexShrink: 0 }} />
+                        <h3 style={{ margin: 0, fontSize: '13px', fontWeight: '700', color: C.navy, flex: 1 }}>{col.label}</h3>
+                        <span style={{ background: col.tag, color: col.tagText, borderRadius: '20px', padding: '2px 9px', fontSize: '11px', fontWeight: '700' }}>{colTasks.length}</span>
+                      </div>
+                      {colTasks.length === 0
+                        ? <div style={{ border: `2px dashed ${C.border}`, borderRadius: '14px', padding: '36px 24px', textAlign: 'center', color: C.mutedLt, fontSize: '12px' }}>Sin tareas en esta columna</div>
+                        : colTasks.map(task => (
+                          <TicketCard key={task.id} task={task} currentUserId={session.user.id}
+                            profiles={profiles} onStatusChange={handleStatusChange}
+                            onDelete={handleDelete} onViewDetail={setSelectedTask} />
+                        ))
+                      }
                     </div>
-                    {colTasks.length === 0
-                      ? <div style={{ border: `2px dashed ${C.border}`, borderRadius: '14px', padding: '36px 24px', textAlign: 'center', color: C.mutedLt, fontSize: '12px' }}>Sin tareas en esta columna</div>
-                      : colTasks.map(task => (
-                        <TicketCard key={task.id} task={task} currentUserId={session.user.id}
-                          profiles={profiles} onStatusChange={handleStatusChange}
-                          onDelete={handleDelete} onViewDetail={setSelectedTask} />
-                      ))
-                    }
-                  </div>
-                );
-              })}
-            </div>
-          ) : activeTab === 'completed' ? (
-            // "Completadas" — lista plana de las tareas completadas del usuario
-            <div style={{ maxWidth: '720px' }}>
-              {filteredTasks.length === 0
-                ? <div style={{ border: `2px dashed ${C.border}`, borderRadius: '14px', padding: '48px', textAlign: 'center', color: C.mutedLt }}>
-                    <CheckCircle2 size={32} color={C.border} style={{ margin: '0 auto 12px', display: 'block' }} />
-                    <div style={{ fontSize: '14px', fontWeight: '600', color: C.muted, marginBottom: 4 }}>Sin tareas completadas aún</div>
-                    <div style={{ fontSize: '12px' }}>Aquí aparecerán tus tareas una vez que las marques como realizadas</div>
-                  </div>
-                : filteredTasks.map(task => (
-                  <TicketCard key={task.id} task={task} currentUserId={session.user.id}
-                    profiles={profiles} onStatusChange={handleStatusChange}
-                    onDelete={handleDelete} onViewDetail={setSelectedTask} />
-                ))
-              }
-            </div>
-          ) : (
-            // "Todas" y "Creadas por mí" — 3 columnas
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 20 }}>
-              {STATUS_COLS.map(col => {
-                const colTasks = filteredTasks.filter(t => t.status === col.status);
-                return (
-                  <div key={col.status}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, padding: '10px 14px', background: C.surface, borderRadius: '12px', border: `1.5px solid ${C.border}` }}>
-                      <div style={{ width: 8, height: 8, borderRadius: '50%', background: col.dot, flexShrink: 0 }} />
-                      <h3 style={{ margin: 0, fontSize: '13px', fontWeight: '700', color: C.navy, flex: 1 }}>{col.label}</h3>
-                      <span style={{ background: col.tag, color: col.tagText, borderRadius: '20px', padding: '2px 9px', fontSize: '11px', fontWeight: '700' }}>{colTasks.length}</span>
+                  );
+                })}
+              </div>
+            )}
+
+            {mainView === 'tickets' && activeTab === 'completed' && (
+              <div style={{ maxWidth: '720px' }}>
+                {filteredTasks.length === 0
+                  ? <div style={{ border: `2px dashed ${C.border}`, borderRadius: '14px', padding: '48px', textAlign: 'center', color: C.mutedLt }}>
+                      <CheckCircle2 size={32} color={C.border} style={{ margin: '0 auto 12px', display: 'block' }} />
+                      <div style={{ fontSize: '14px', fontWeight: '600', color: C.muted, marginBottom: 4 }}>Sin tareas completadas aún</div>
                     </div>
-                    {colTasks.length === 0
-                      ? <div style={{ border: `2px dashed ${C.border}`, borderRadius: '14px', padding: '36px 24px', textAlign: 'center', color: C.mutedLt, fontSize: '12px' }}>Sin tareas en esta columna</div>
-                      : colTasks.map(task => (
-                        <TicketCard key={task.id} task={task} currentUserId={session.user.id}
-                          profiles={profiles} onStatusChange={handleStatusChange}
-                          onDelete={handleDelete} onViewDetail={setSelectedTask} />
-                      ))
-                    }
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </main>
+                  : filteredTasks.map(task => (
+                    <TicketCard key={task.id} task={task} currentUserId={session.user.id}
+                      profiles={profiles} onStatusChange={handleStatusChange}
+                      onDelete={handleDelete} onViewDetail={setSelectedTask} />
+                  ))
+                }
+              </div>
+            )}
+
+            {mainView === 'tickets' && (activeTab === 'all' || activeTab === 'created') && (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 20 }}>
+                {STATUS_COLS.map(col => {
+                  const colTasks = filteredTasks.filter(t => t.status === col.status);
+                  return (
+                    <div key={col.status}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, padding: '10px 14px', background: C.surface, borderRadius: '12px', border: `1.5px solid ${C.border}` }}>
+                        <div style={{ width: 8, height: 8, borderRadius: '50%', background: col.dot, flexShrink: 0 }} />
+                        <h3 style={{ margin: 0, fontSize: '13px', fontWeight: '700', color: C.navy, flex: 1 }}>{col.label}</h3>
+                        <span style={{ background: col.tag, color: col.tagText, borderRadius: '20px', padding: '2px 9px', fontSize: '11px', fontWeight: '700' }}>{colTasks.length}</span>
+                      </div>
+                      {colTasks.length === 0
+                        ? <div style={{ border: `2px dashed ${C.border}`, borderRadius: '14px', padding: '36px 24px', textAlign: 'center', color: C.mutedLt, fontSize: '12px' }}>Sin tareas en esta columna</div>
+                        : colTasks.map(task => (
+                          <TicketCard key={task.id} task={task} currentUserId={session.user.id}
+                            profiles={profiles} onStatusChange={handleStatusChange}
+                            onDelete={handleDelete} onViewDetail={setSelectedTask} />
+                        ))
+                      }
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* ── EQUIPO VIEW ── */}
+            {mainView === 'team' && (
+              <TeamView profiles={profiles} tasks={tasks} currentUserId={session.user.id}
+                onAssignTask={(id) => { setPreAssignTo(id); setShowNewTask(true); }} />
+            )}
+
+            {/* ── ESTADÍSTICAS VIEW ── */}
+            {mainView === 'analytics' && (
+              <LeaderboardView tasks={tasks} profiles={profiles} />
+            )}
+
+            {/* ── CHAT VIEW ── */}
+            {mainView === 'chat' && (
+              <ChatView profiles={profiles} currentUserId={session.user.id} currentProfile={profile} />
+            )}
+
+          </main>
+        </div>
 
         {showNewTask && (
           <NewTaskModal profiles={profiles} currentUserId={session.user.id} preAssignTo={preAssignTo}
@@ -2174,10 +2347,11 @@ export default function App() {
           <TaskDetailModal task={selectedTask} profiles={profiles} currentUserId={session.user.id}
             onClose={() => setSelectedTask(null)} onStatusChange={handleStatusChange} onDelete={handleDelete} />
         )}
-        {showNotifs && <div style={{ position: 'fixed', inset: 0, zIndex: 99 }} onClick={() => { setShowNotifs(false); }} />}
-      </div>
+        {showNotifs && <div style={{ position: 'fixed', inset: 0, zIndex: 99 }} onClick={() => setShowNotifs(false)} />}
+          </div>
     );
   }
+  
 
   // =========================================================================
   // AUTH PAGE
