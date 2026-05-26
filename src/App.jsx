@@ -606,11 +606,24 @@ function NewTaskModal({ profiles, currentUserId, onClose, onCreated, preAssignTo
   const fileRef = useRef();
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
+  // Allowed MIME types: PDF, Excel, CSV, PNG, JPG/JPEG
+  const ALLOWED_TYPES = [
+    'application/pdf',
+    'application/vnd.ms-excel',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'text/csv',
+    'image/png',
+    'image/jpeg',
+    'image/jpg',
+  ];
+
   const handleFileChange = (e) => {
     const f = e.target.files[0];
     if (f) {
-      const allowed = ['application/pdf','application/vnd.ms-excel','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','text/csv'];
-      if (!allowed.includes(f.type)) { setError('Solo se permiten archivos PDF, Excel o CSV.'); return; }
+      if (!ALLOWED_TYPES.includes(f.type)) {
+        setError('Solo se permiten archivos PDF, Excel, CSV, PNG o JPG.');
+        return;
+      }
       if (f.size > 10 * 1024 * 1024) { setError('El archivo no puede superar 10 MB.'); return; }
       setFile(f); setError('');
     }
@@ -673,6 +686,9 @@ function NewTaskModal({ profiles, currentUserId, onClose, onCreated, preAssignTo
   const inp = { width: '100%', height: '44px', padding: '0 14px', borderRadius: '10px', border: `1.5px solid ${C.border}`, background: C.surface, color: C.text, fontSize: '14px', outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit' };
   const lbl = { display: 'block', fontSize: '11px', fontWeight: '700', color: C.navy, marginBottom: 6, letterSpacing: '0.05em', textTransform: 'uppercase' };
 
+  // Detect if attached file is an image for preview
+  const isImage = (f) => f && f.type && f.type.startsWith('image/');
+
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(10,15,30,0.55)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 16 }}>
       <div style={{ background: C.surface, borderRadius: '24px', width: '100%', maxWidth: '540px', maxHeight: '92vh', overflowY: 'auto', border: `1.5px solid ${C.border}`, boxShadow: '0 32px 80px rgba(27,58,107,0.22)' }}>
@@ -727,15 +743,20 @@ function NewTaskModal({ profiles, currentUserId, onClose, onCreated, preAssignTo
               </div>
             </div>
             <div>
-              <label style={lbl}>Adjuntar archivo <span style={{ textTransform: 'none', fontWeight: '400', color: C.muted, letterSpacing: 0 }}>(PDF, Excel, CSV · máx. 10 MB)</span></label>
+              <label style={lbl}>Adjuntar archivo <span style={{ textTransform: 'none', fontWeight: '400', color: C.muted, letterSpacing: 0 }}>(PDF, Excel, CSV, PNG, JPG · máx. 10 MB)</span></label>
               <div onClick={() => fileRef.current?.click()}
                 style={{ border: `2px dashed ${file ? C.blue : C.border}`, borderRadius: '12px', padding: '20px', textAlign: 'center', cursor: 'pointer', background: file ? C.accentLt : C.bg, transition: 'all 0.2s' }}
                 onMouseEnter={e => { if (!file) { e.currentTarget.style.borderColor = C.accent; e.currentTarget.style.background = C.accentLt; } }}
                 onMouseLeave={e => { if (!file) { e.currentTarget.style.borderColor = C.border; e.currentTarget.style.background = C.bg; } }}>
-                <input ref={fileRef} type="file" accept=".pdf,.xlsx,.xls,.csv" onChange={handleFileChange} style={{ display: 'none' }} />
+                <input ref={fileRef} type="file" accept=".pdf,.xlsx,.xls,.csv,.png,.jpg,.jpeg" onChange={handleFileChange} style={{ display: 'none' }} />
                 {file ? (
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
-                    <FileText size={20} color={C.blue} />
+                    {isImage(file) ? (
+                      <img src={URL.createObjectURL(file)} alt="preview"
+                        style={{ width: 40, height: 40, borderRadius: '8px', objectFit: 'cover', border: `1px solid ${C.border}` }} />
+                    ) : (
+                      <FileText size={20} color={C.blue} />
+                    )}
                     <div style={{ textAlign: 'left' }}>
                       <div style={{ fontSize: '13px', fontWeight: '700', color: C.navy }}>{file.name}</div>
                       <div style={{ fontSize: '11px', color: C.muted }}>{(file.size / 1024).toFixed(1)} KB</div>
@@ -747,7 +768,7 @@ function NewTaskModal({ profiles, currentUserId, onClose, onCreated, preAssignTo
                   <div>
                     <Upload size={20} color={C.mutedLt} style={{ margin: '0 auto 6px' }} />
                     <div style={{ fontSize: '13px', color: C.muted, fontWeight: '500' }}>Haz clic para subir un archivo</div>
-                    <div style={{ fontSize: '11px', color: C.mutedLt, marginTop: 2 }}>PDF, Excel, CSV admitidos</div>
+                    <div style={{ fontSize: '11px', color: C.mutedLt, marginTop: 2 }}>PDF, Excel, CSV, PNG, JPG admitidos</div>
                   </div>
                 )}
               </div>
@@ -1033,6 +1054,7 @@ function DMConversation({ otherUser, currentUserId, currentProfile, onBack }) {
   const [hoveredMsg, setHoveredMsg] = useState(null);
   const [selectedFile, setSelectedFile] = useState(null);
   const [uploadingFile, setUploadingFile] = useState(false);
+  const [clearingChat, setClearingChat] = useState(false);
   const bottomRef  = useRef();
   const inputRef   = useRef();
   const fileRef    = useRef();
@@ -1131,6 +1153,17 @@ function DMConversation({ otherUser, currentUserId, currentProfile, onBack }) {
     await supabase.from('direct_messages').delete().eq('id', msgId);
   };
 
+  const handleClearChat = async () => {
+    if (!window.confirm('¿Vaciar toda la conversación? Esto eliminará todos tus mensajes enviados en este chat.')) return;
+    setClearingChat(true);
+    await supabase
+      .from('direct_messages')
+      .delete()
+      .eq('sender_id', currentUserId)
+      .eq('receiver_id', otherUser.id);
+    setClearingChat(false);
+  };
+
   const items = (() => {
     const groups = [];
     let lastDate = null;
@@ -1150,6 +1183,9 @@ function DMConversation({ otherUser, currentUserId, currentProfile, onBack }) {
     return prev.data?.sender_id === curr.data?.sender_id;
   };
 
+  // Helper: detect image types
+  const isImage = (type) => type && type.startsWith('image/');
+
   return (
     <div style={{ flex: 1, background: C.surface, borderRadius: '20px', border: '1.5px solid ' + C.border, boxShadow: '0 2px 8px rgba(27,58,107,0.07)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       {/* Header */}
@@ -1160,10 +1196,34 @@ function DMConversation({ otherUser, currentUserId, currentProfile, onBack }) {
           <ArrowLeft size={14} />
         </button>
         <Avatar name={otherUser.full_name} size={38} photoUrl={otherUser.avatar_url} />
-        <div>
+        <div style={{ flex: 1 }}>
           <div style={{ fontSize: '14px', fontWeight: '800', color: C.navy }}>{otherUser.full_name}</div>
           <div style={{ fontSize: '11px', color: C.muted }}>{otherUser.cargo}</div>
         </div>
+        {/* Vaciar chat button */}
+        <button
+          onClick={handleClearChat}
+          disabled={clearingChat || messages.length === 0}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 5,
+            padding: '6px 12px', borderRadius: '20px',
+            border: '1.5px solid ' + C.dangerLt,
+            background: 'transparent',
+            color: messages.length === 0 ? C.mutedLt : C.danger,
+            fontSize: '11px', fontWeight: '700',
+            cursor: (clearingChat || messages.length === 0) ? 'not-allowed' : 'pointer',
+            opacity: messages.length === 0 ? 0.5 : 1,
+            transition: 'all 0.15s',
+          }}
+          onMouseEnter={e => { if (messages.length > 0) { e.currentTarget.style.background = C.dangerLt; } }}
+          onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+        >
+          {clearingChat
+            ? <Loader2 size={11} style={{ animation: 'spin 1s linear infinite' }} />
+            : <Trash size={11} />
+          }
+          Vaciar chat
+        </button>
       </div>
 
       {/* Messages */}
@@ -1225,7 +1285,8 @@ function DMConversation({ otherUser, currentUserId, currentProfile, onBack }) {
                       boxShadow: isMe ? '0 2px 8px rgba(37,99,235,0.20)' : '0 1px 3px rgba(27,58,107,0.06)',
                       wordBreak: 'break-word', whiteSpace: 'pre-wrap', maxWidth: '100%',
                     }}>
-                      {msg.file_url && msg.file_type && msg.file_type.startsWith('image/') && (
+                      {/* IMAGE preview */}
+                      {msg.file_url && isImage(msg.file_type) && (
                         <div style={{ marginBottom: msg.content ? 8 : 0 }}>
                           <img
                             src={msg.file_url}
@@ -1235,7 +1296,8 @@ function DMConversation({ otherUser, currentUserId, currentProfile, onBack }) {
                           />
                         </div>
                       )}
-                      {msg.file_url && msg.file_type && !msg.file_type.startsWith('image/') && (
+                      {/* NON-IMAGE file */}
+                      {msg.file_url && !isImage(msg.file_type) && (
                         <a
                           href={msg.file_url}
                           target="_blank"
@@ -1284,7 +1346,7 @@ function DMConversation({ otherUser, currentUserId, currentProfile, onBack }) {
       <div style={{ padding: '14px 18px', borderTop: '1px solid ' + C.border, background: C.surface }}>
         {selectedFile && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', marginBottom: 8, background: C.accentLt, borderRadius: '10px', border: '1px solid ' + C.border }}>
-            {selectedFile.type.startsWith('image/') ? (
+            {isImage(selectedFile.type) ? (
               <img src={URL.createObjectURL(selectedFile)} alt="preview" style={{ width: 36, height: 36, borderRadius: '6px', objectFit: 'cover', flexShrink: 0 }} />
             ) : (
               <div style={{ width: 36, height: 36, borderRadius: '6px', background: C.surface, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: '1px solid ' + C.border }}>
@@ -1304,7 +1366,8 @@ function DMConversation({ otherUser, currentUserId, currentProfile, onBack }) {
         <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', background: C.bg, borderRadius: '16px', border: '1.5px solid ' + C.border, padding: '8px 8px 8px 12px', transition: 'border-color 0.15s' }}
           onFocusCapture={e => e.currentTarget.style.borderColor = C.blue}
           onBlurCapture={e => e.currentTarget.style.borderColor = C.border}>
-          <input ref={fileRef} type="file" accept="image/*,.pdf" style={{ display: 'none' }}
+          {/* Accept ALL file types */}
+          <input ref={fileRef} type="file" accept="image/*,.pdf,.xlsx,.xls,.csv,.doc,.docx,.txt,.zip,.rar,.ppt,.pptx" style={{ display: 'none' }}
             onChange={e => { const f = e.target.files[0]; if (f) setSelectedFile(f); e.target.value = ''; }} />
           <button onClick={() => fileRef.current?.click()}
             style={{ width: 34, height: 34, borderRadius: '10px', border: 'none', background: selectedFile ? C.accentLt : 'transparent', color: selectedFile ? C.blue : C.mutedLt, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0, transition: 'all 0.15s' }}
