@@ -379,9 +379,31 @@ function TaskDetailModal({ task, profiles, currentUserId, onClose, onStatusChang
         <div style={{ padding: '28px' }}>
           <div style={{ marginBottom: 24 }}>
             <h4 style={{ margin: '0 0 10px', fontSize: '11px', fontWeight: '700', color: C.navy, letterSpacing: '0.06em', textTransform: 'uppercase' }}>Descripción</h4>
-            {task.description
-              ? <p style={{ margin: 0, fontSize: '14px', color: C.text, lineHeight: '1.75', background: C.bg, padding: '16px', borderRadius: '12px', border: `1px solid ${C.border}` }}>{task.description}</p>
-              : <p style={{ margin: 0, fontSize: '13px', color: C.mutedLt, fontStyle: 'italic' }}>Sin descripción</p>
+            {task.description ? (() => {
+              const lines = task.description.split('\n');
+              const linkLine = lines.find(l => l.startsWith('🔗 '));
+              const linkUrl  = linkLine ? linkLine.replace('🔗 ', '').trim() : null;
+              const bodyText = lines.filter(l => !l.startsWith('🔗 ')).join('\n').trim();
+              const renderMd = (text) => text.split(/(\*\*[^*]+\*\*|_[^_]+_)/g).map((part, i) => {
+                if (part.startsWith('**') && part.endsWith('**')) return <strong key={i}>{part.slice(2,-2)}</strong>;
+                if (part.startsWith('_')  && part.endsWith('_'))  return <em key={i}>{part.slice(1,-1)}</em>;
+                return <span key={i}>{part}</span>;
+              });
+              return (
+                <div style={{ background: C.bg, padding: '16px', borderRadius: '12px', border: '1px solid ' + C.border, wordBreak: 'break-word', overflowWrap: 'break-word', whiteSpace: 'pre-wrap', maxWidth: '100%', overflowX: 'hidden' }}>
+                  {bodyText && <p style={{ margin: 0, fontSize: '14px', color: C.text, lineHeight: '1.75' }}>{renderMd(bodyText)}</p>}
+                  {linkUrl && (
+                    <a href={linkUrl} target="_blank" rel="noopener noreferrer"
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: bodyText ? 10 : 0, fontSize: '13px', color: C.blue, fontWeight: '600', textDecoration: 'none', wordBreak: 'break-all' }}
+                      onMouseEnter={e => e.currentTarget.style.textDecoration = 'underline'}
+                      onMouseLeave={e => e.currentTarget.style.textDecoration = 'none'}>
+                      <ExternalLink size={13} /> {linkUrl}
+                    </a>
+                  )}
+                </div>
+              );
+            })()
+            : <p style={{ margin: 0, fontSize: '13px', color: C.mutedLt, fontStyle: 'italic' }}>Sin descripción</p>
             }
           </div>
 
@@ -476,23 +498,72 @@ function TaskDetailModal({ task, profiles, currentUserId, onClose, onStatusChang
 
 // ─── TICKET CARD ─────────────────────────────────────────────────────────────
 function TicketCard({ task, currentUserId, profiles, onStatusChange, onDelete, onViewDetail }) {
-  const assignee  = profiles.find(p => p.id === task.assigned_to);
-  const overdue   = isOverdue(task.due_date, task.status);
+  const assignee   = profiles.find(p => p.id === task.assigned_to);
+  const overdue    = isOverdue(task.due_date, task.status);
   const isCreator  = task.created_by  === currentUserId;
   const isAssigned = task.assigned_to === currentUserId;
-  const pCfg = PRIORITY_CONFIG[task.priority] || PRIORITY_CONFIG.medium;
-  const daysLeft = getDaysUntil(task.due_date);
+  const pCfg   = PRIORITY_CONFIG[task.priority] || PRIORITY_CONFIG.medium;
+  const daysLeft   = getDaysUntil(task.due_date);
+  const [confirmComplete, setConfirmComplete] = useState(false);
+
+  // Extract link from description if present
+  const descLines = (task.description || '').split('\n');
+  const linkLine  = descLines.find(l => l.startsWith('🔗 '));
+  const linkUrl   = linkLine ? linkLine.replace('🔗 ', '').trim() : null;
+  const descText  = descLines.filter(l => !l.startsWith('🔗 ')).join('\n').trim();
+
+  // Render markdown-lite: **bold** and _italic_
+  const renderDesc = (text) => {
+    if (!text) return null;
+    const parts = text.split(/(\*\*[^*]+\*\*|_[^_]+_)/g);
+    return parts.map((part, i) => {
+      if (part.startsWith('**') && part.endsWith('**'))
+        return <strong key={i}>{part.slice(2, -2)}</strong>;
+      if (part.startsWith('_') && part.endsWith('_'))
+        return <em key={i}>{part.slice(1, -1)}</em>;
+      return <span key={i}>{part}</span>;
+    });
+  };
+
+  const handleComplete = () => {
+    if (task.status === 'in_progress') {
+      setConfirmComplete(true);
+    } else {
+      onStatusChange(task.id, 'completed');
+    }
+  };
 
   return (
     <div style={{
-      background: C.surface, border: `1.5px solid ${overdue ? '#FECACA' : C.border}`,
-      borderLeft: `4px solid ${pCfg.color}`, borderRadius: '14px', padding: '16px', marginBottom: '10px',
+      background: C.surface, border: '1.5px solid ' + (overdue ? '#FECACA' : C.border),
+      borderLeft: '4px solid ' + pCfg.color, borderRadius: '14px', padding: '16px', marginBottom: '10px',
       boxShadow: overdue ? '0 2px 12px rgba(220,38,38,0.08)' : '0 1px 4px rgba(27,58,107,0.06)',
-      transition: 'box-shadow 0.2s, transform 0.15s',
+      transition: 'box-shadow 0.2s, transform 0.15s', position: 'relative',
     }}
     onMouseEnter={e => { e.currentTarget.style.boxShadow = '0 4px 18px rgba(27,58,107,0.11)'; e.currentTarget.style.transform = 'translateY(-1px)'; }}
     onMouseLeave={e => { e.currentTarget.style.boxShadow = '0 1px 4px rgba(27,58,107,0.06)'; e.currentTarget.style.transform = 'translateY(0)'; }}
     >
+      {/* Confirm complete overlay */}
+      {confirmComplete && (
+        <div style={{ position: 'absolute', inset: 0, background: 'rgba(10,15,30,0.5)', backdropFilter: 'blur(3px)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10 }}>
+          <div style={{ background: C.surface, borderRadius: '16px', padding: '20px 24px', width: '260px', border: '1.5px solid ' + C.border, boxShadow: '0 8px 32px rgba(27,58,107,0.18)', textAlign: 'center' }}>
+            <div style={{ fontSize: '28px', marginBottom: 8 }}>✅</div>
+            <div style={{ fontSize: '14px', fontWeight: '800', color: C.navy, marginBottom: 6 }}>¿Marcar como realizado?</div>
+            <div style={{ fontSize: '12px', color: C.muted, marginBottom: 16, lineHeight: '1.5' }}>Esta acción cambiará el estado de la tarea a completada.</div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={() => setConfirmComplete(false)}
+                style={{ flex: 1, padding: '8px', borderRadius: '10px', border: '1.5px solid ' + C.border, background: 'transparent', color: C.muted, fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
+                Cancelar
+              </button>
+              <button onClick={() => { setConfirmComplete(false); onStatusChange(task.id, 'completed'); }}
+                style={{ flex: 1, padding: '8px', borderRadius: '10px', border: 'none', background: 'linear-gradient(135deg, ' + C.success + ', #22c55e)', color: '#fff', fontSize: '12px', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
+                <CheckCircle2 size={12} /> Confirmar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4, flexWrap: 'wrap' }}>
@@ -501,19 +572,27 @@ function TicketCard({ task, currentUserId, profiles, onStatusChange, onDelete, o
             {overdue && <Chip color={C.danger} bg={C.dangerLt} border="#FECACA">Vencida</Chip>}
             {task.file_url && <Chip color={C.accent} bg={C.accentLt} border="#BFDBFE"><Paperclip size={9} style={{ marginRight: 3 }} />Adjunto</Chip>}
           </div>
-          <h3 style={{ margin: 0, fontSize: '14px', fontWeight: '700', color: C.navy, lineHeight: '1.35' }}>{task.title}</h3>
+          <h3 style={{ margin: 0, fontSize: '14px', fontWeight: '700', color: C.navy, lineHeight: '1.35', wordBreak: 'break-word', overflowWrap: 'break-word' }}>{task.title}</h3>
         </div>
         <button onClick={() => onViewDetail(task)}
-          style={{ background: C.bg, border: `1px solid ${C.border}`, cursor: 'pointer', color: C.muted, padding: '5px 10px', borderRadius: '8px', flexShrink: 0, marginLeft: 8, fontSize: '11px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: 4 }}
+          style={{ background: C.bg, border: '1px solid ' + C.border, cursor: 'pointer', color: C.muted, padding: '5px 10px', borderRadius: '8px', flexShrink: 0, marginLeft: 8, fontSize: '11px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: 4 }}
           onMouseEnter={e => { e.currentTarget.style.background = C.accentLt; e.currentTarget.style.color = C.navy; }}
           onMouseLeave={e => { e.currentTarget.style.background = C.bg; e.currentTarget.style.color = C.muted; }}
         >Ver <ChevronRight size={11} /></button>
       </div>
 
-      {task.description && (
-        <p style={{ margin: '0 0 10px', fontSize: '12px', color: C.muted, lineHeight: '1.55', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
-          {task.description}
+      {descText && (
+        <p style={{ margin: '0 0 6px', fontSize: '12px', color: C.muted, lineHeight: '1.55', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', wordBreak: 'break-word', overflowWrap: 'break-word', maxWidth: '100%' }}>
+          {renderDesc(descText)}
         </p>
+      )}
+      {linkUrl && (
+        <a href={linkUrl} target="_blank" rel="noopener noreferrer"
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: '11px', color: C.blue, fontWeight: '600', marginBottom: 8, textDecoration: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%' }}
+          onMouseEnter={e => e.currentTarget.style.textDecoration = 'underline'}
+          onMouseLeave={e => e.currentTarget.style.textDecoration = 'none'}>
+          <ExternalLink size={11} /> {linkUrl.length > 50 ? linkUrl.substring(0, 50) + '...' : linkUrl}
+        </a>
       )}
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', fontSize: '11px', color: C.muted, marginBottom: 12 }}>
@@ -526,56 +605,32 @@ function TicketCard({ task, currentUserId, profiles, onStatusChange, onDelete, o
         {task.due_date && task.status !== 'completed' && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 4, color: overdue ? C.danger : daysLeft !== null && daysLeft <= 2 ? C.warn : C.muted, fontWeight: overdue ? '700' : daysLeft !== null && daysLeft <= 2 ? '600' : '400' }}>
             {overdue ? <AlertTriangle size={11} /> : <Calendar size={11} />}
-            {overdue
-              ? `Vencido: ${formatDate(task.due_date)}`
-              : daysLeft === 0 ? '⚡ Vence hoy'
-              : daysLeft === 1 ? '⚠️ Vence mañana'
-              : daysLeft !== null && daysLeft <= 3 ? `⚠️ ${daysLeft} días`
-              : `Vence: ${formatDate(task.due_date)}`
-            }
+            {overdue ? 'Vencido: ' + formatDate(task.due_date) : daysLeft === 0 ? '⚡ Vence hoy' : daysLeft === 1 ? '⚠️ Vence mañana' : daysLeft !== null && daysLeft <= 3 ? '⚠️ ' + daysLeft + ' días' : 'Vence: ' + formatDate(task.due_date)}
           </div>
         )}
       </div>
 
-      {isAssigned && task.status !== 'completed' && (
+      {/* Buttons — unified logic to avoid duplicates */}
+      {task.status !== 'completed' && (isAssigned || isCreator) && (
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-          {task.status === 'pending' && (
+          {task.status === 'pending' && isAssigned && (
             <button onClick={() => onStatusChange(task.id, 'in_progress')}
-              style={{ padding: '5px 12px', borderRadius: '20px', border: `1.5px solid ${C.accentLt}`, background: C.accentLt, color: C.navy, fontSize: '11px', fontWeight: '700', cursor: 'pointer' }}>
+              style={{ padding: '5px 12px', borderRadius: '20px', border: '1.5px solid ' + C.accentLt, background: C.accentLt, color: C.navy, fontSize: '11px', fontWeight: '700', cursor: 'pointer' }}>
               Iniciar tarea
             </button>
           )}
-          <button onClick={() => onStatusChange(task.id, 'completed')}
-            style={{ padding: '5px 12px', borderRadius: '20px', border: `1.5px solid ${C.successLt}`, background: C.successLt, color: C.success, fontSize: '11px', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
-            <CheckCircle2 size={12} /> Marcar realizado
-          </button>
-        </div>
-      )}
-
-      {isCreator && task.status !== 'completed' && !isAssigned && (
-        <div style={{ display: 'flex', gap: 6 }}>
-          <button onClick={() => onDelete(task.id)}
-            style={{ padding: '5px 12px', borderRadius: '20px', border: `1.5px solid ${C.dangerLt}`, background: C.dangerLt, color: C.danger, fontSize: '11px', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
-            <Trash2 size={11} /> Eliminar
-          </button>
-        </div>
-      )}
-      {isCreator && isAssigned && task.status !== 'completed' && (
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-          {task.status === 'pending' && (
-            <button onClick={() => onStatusChange(task.id, 'in_progress')}
-              style={{ padding: '5px 12px', borderRadius: '20px', border: `1.5px solid ${C.accentLt}`, background: C.accentLt, color: C.navy, fontSize: '11px', fontWeight: '700', cursor: 'pointer' }}>
-              Iniciar tarea
+          {isAssigned && (
+            <button onClick={handleComplete}
+              style={{ padding: '5px 12px', borderRadius: '20px', border: '1.5px solid ' + C.successLt, background: C.successLt, color: C.success, fontSize: '11px', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
+              <CheckCircle2 size={12} /> Marcar realizado
             </button>
           )}
-          <button onClick={() => onStatusChange(task.id, 'completed')}
-            style={{ padding: '5px 12px', borderRadius: '20px', border: `1.5px solid ${C.successLt}`, background: C.successLt, color: C.success, fontSize: '11px', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
-            <CheckCircle2 size={12} /> Marcar realizado
-          </button>
-          <button onClick={() => onDelete(task.id)}
-            style={{ padding: '5px 12px', borderRadius: '20px', border: `1.5px solid ${C.dangerLt}`, background: C.dangerLt, color: C.danger, fontSize: '11px', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
-            <Trash2 size={11} /> Eliminar
-          </button>
+          {isCreator && (
+            <button onClick={() => onDelete(task.id)}
+              style={{ padding: '5px 12px', borderRadius: '20px', border: '1.5px solid ' + C.dangerLt, background: C.dangerLt, color: C.danger, fontSize: '11px', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
+              <Trash2 size={11} /> Eliminar
+            </button>
+          )}
         </div>
       )}
 
@@ -587,7 +642,7 @@ function TicketCard({ task, currentUserId, profiles, onStatusChange, onDelete, o
           </div>
           {isCreator && (
             <button onClick={() => onDelete(task.id)}
-              style={{ padding: '4px 10px', borderRadius: '20px', border: `1.5px solid ${C.dangerLt}`, background: C.dangerLt, color: C.danger, fontSize: '10px', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 3 }}>
+              style={{ padding: '4px 10px', borderRadius: '20px', border: '1.5px solid ' + C.dangerLt, background: C.dangerLt, color: C.danger, fontSize: '10px', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 3 }}>
               <Trash2 size={10} /> Eliminar
             </button>
           )}
@@ -599,14 +654,15 @@ function TicketCard({ task, currentUserId, profiles, onStatusChange, onDelete, o
 
 // ─── NEW TASK MODAL ───────────────────────────────────────────────────────────
 function NewTaskModal({ profiles, currentUserId, onClose, onCreated, preAssignTo = null }) {
-  const [form, setForm] = useState({ title: '', description: '', assigned_to: preAssignTo || '', priority: 'medium', due_date: '' });
+  const [form, setForm] = useState({
+    title: '', description: '', link: '', assigned_to: preAssignTo || '', priority: 'medium', due_date: ''
+  });
   const [file, setFile]       = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState('');
   const fileRef = useRef();
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
-  // Allowed MIME types: PDF, Excel, CSV, PNG, JPG/JPEG
   const ALLOWED_TYPES = [
     'application/pdf',
     'application/vnd.ms-excel',
@@ -645,10 +701,26 @@ function NewTaskModal({ profiles, currentUserId, onClose, onCreated, preAssignTo
     set('due_date', val);
   };
 
+  // Toolbar actions for description textarea
+  const descRef = useRef();
+  const applyFormat = (tag) => {
+    const el = descRef.current;
+    if (!el) return;
+    el.focus();
+    const sel = window.getSelection();
+    const selected = sel && sel.rangeCount > 0 ? sel.getRangeAt(0).toString() : '';
+    let wrap = '';
+    if (tag === 'bold')   wrap = '**' + (selected || 'texto') + '**';
+    if (tag === 'italic') wrap = '_'  + (selected || 'texto') + '_';
+    document.execCommand('insertText', false, wrap);
+    set('description', el.innerText);
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!form.title.trim()) return setError('El título es obligatorio.');
     if (!form.assigned_to)  return setError('Debes asignar la tarea a alguien.');
+    if (form.description.length > 200) return setError('La descripción no puede superar 200 caracteres.');
     if (form.due_date) {
       const selected = new Date(form.due_date);
       const now = new Date();
@@ -659,14 +731,20 @@ function NewTaskModal({ profiles, currentUserId, onClose, onCreated, preAssignTo
     let fileUrl = null, fileName = null;
     if (file) {
       const ext = file.name.split('.').pop();
-      const path = `tasks/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+      const path = 'tasks/' + Date.now() + '_' + Math.random().toString(36).slice(2) + '.' + ext;
       const { error: upErr } = await supabase.storage.from('task-files').upload(path, file);
       if (upErr) { setLoading(false); return setError('Error subiendo archivo: ' + upErr.message); }
       const { data: urlData } = supabase.storage.from('task-files').getPublicUrl(path);
       fileUrl = urlData.publicUrl; fileName = file.name;
     }
+
+    // Combine description + link if provided
+    const fullDesc = form.description.trim()
+      ? (form.link.trim() ? form.description.trim() + '\n\n🔗 ' + form.link.trim() : form.description.trim())
+      : (form.link.trim() ? '🔗 ' + form.link.trim() : null);
+
     const { data, error: err } = await supabase.from('tasks').insert([{
-      title: form.title.trim(), description: form.description.trim() || null,
+      title: form.title.trim(), description: fullDesc,
       assigned_to: form.assigned_to, priority: form.priority,
       due_date: form.due_date || null, created_by: currentUserId, status: 'pending',
       file_url: fileUrl, file_name: fileName,
@@ -682,17 +760,17 @@ function NewTaskModal({ profiles, currentUserId, onClose, onCreated, preAssignTo
     return now.toISOString().slice(0, 16);
   })();
 
-  const sel = { width: '100%', height: '44px', padding: '0 14px', borderRadius: '10px', border: `1.5px solid ${C.border}`, background: C.surface, color: C.text, fontSize: '14px', outline: 'none', boxSizing: 'border-box', appearance: 'none', cursor: 'pointer', fontFamily: 'inherit' };
-  const inp = { width: '100%', height: '44px', padding: '0 14px', borderRadius: '10px', border: `1.5px solid ${C.border}`, background: C.surface, color: C.text, fontSize: '14px', outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit' };
+  const sel = { width: '100%', height: '44px', padding: '0 14px', borderRadius: '10px', border: '1.5px solid ' + C.border, background: C.surface, color: C.text, fontSize: '14px', outline: 'none', boxSizing: 'border-box', appearance: 'none', cursor: 'pointer', fontFamily: 'inherit' };
+  const inp = { width: '100%', height: '44px', padding: '0 14px', borderRadius: '10px', border: '1.5px solid ' + C.border, background: C.surface, color: C.text, fontSize: '14px', outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit' };
   const lbl = { display: 'block', fontSize: '11px', fontWeight: '700', color: C.navy, marginBottom: 6, letterSpacing: '0.05em', textTransform: 'uppercase' };
-
-  // Detect if attached file is an image for preview
   const isImage = (f) => f && f.type && f.type.startsWith('image/');
+  const descLen = form.description.length;
+  const descOver = descLen > 200;
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(10,15,30,0.55)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 16 }}>
-      <div style={{ background: C.surface, borderRadius: '24px', width: '100%', maxWidth: '540px', maxHeight: '92vh', overflowY: 'auto', border: `1.5px solid ${C.border}`, boxShadow: '0 32px 80px rgba(27,58,107,0.22)' }}>
-        <div style={{ background: `linear-gradient(135deg, ${C.navy} 0%, ${C.blue} 100%)`, borderRadius: '22px 22px 0 0', padding: '24px 28px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div style={{ background: C.surface, borderRadius: '24px', width: '100%', maxWidth: '540px', maxHeight: '92vh', overflowY: 'auto', border: '1.5px solid ' + C.border, boxShadow: '0 32px 80px rgba(27,58,107,0.22)' }}>
+        <div style={{ background: 'linear-gradient(135deg, ' + C.navy + ' 0%, ' + C.blue + ' 100%)', borderRadius: '22px 22px 0 0', padding: '24px 28px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
             <h2 style={{ margin: 0, fontSize: '18px', fontWeight: '800', color: '#fff' }}>Crear Ticket</h2>
             <p style={{ margin: '3px 0 0', fontSize: '12px', color: 'rgba(255,255,255,0.6)' }}>Asigna y define los detalles de la tarea</p>
@@ -704,17 +782,67 @@ function NewTaskModal({ profiles, currentUserId, onClose, onCreated, preAssignTo
             <div>
               <label style={lbl}>Título *</label>
               <input style={inp} value={form.title} onChange={e => set('title', e.target.value)} placeholder="Ej: Diseñar pantalla de login" required
-                onFocus={e => { e.target.style.borderColor = C.blue; e.target.style.boxShadow = `0 0 0 3px ${C.accentLt}`; }}
+                onFocus={e => { e.target.style.borderColor = C.blue; e.target.style.boxShadow = '0 0 0 3px ' + C.accentLt; }}
                 onBlur={e => { e.target.style.borderColor = C.border; e.target.style.boxShadow = 'none'; }} />
             </div>
+
+            {/* Description with mini toolbar */}
             <div>
-              <label style={lbl}>Descripción</label>
-              <textarea value={form.description} onChange={e => set('description', e.target.value)}
-                placeholder="Detalla los criterios de aceptación, contexto y resultados esperados..." rows={4}
-                style={{ ...inp, height: 'auto', padding: '12px 14px', resize: 'vertical', lineHeight: '1.6' }}
-                onFocus={e => { e.target.style.borderColor = C.blue; e.target.style.boxShadow = `0 0 0 3px ${C.accentLt}`; }}
-                onBlur={e => { e.target.style.borderColor = C.border; e.target.style.boxShadow = 'none'; }} />
+              <label style={lbl}>Descripción <span style={{ textTransform: 'none', fontWeight: '400', color: C.muted, letterSpacing: 0 }}>(máx. 200 caracteres)</span></label>
+              {/* Toolbar */}
+              <div style={{ display: 'flex', gap: 4, marginBottom: 6 }}>
+                {[
+                  { label: 'N', title: 'Negrita', tag: 'bold',   style: { fontWeight: '900', fontStyle: 'normal', fontFamily: 'serif' } },
+                  { label: 'I', title: 'Cursiva', tag: 'italic', style: { fontStyle: 'italic', fontWeight: '500', fontFamily: 'serif' } },
+                ].map(btn => (
+                  <button key={btn.tag} type="button" onClick={() => applyFormat(btn.tag)} title={btn.title}
+                    style={{ padding: '4px 10px', borderRadius: '6px', border: '1.5px solid ' + C.border, background: C.bg, color: C.navy, fontSize: '12px', cursor: 'pointer', fontFamily: 'inherit', ...btn.style }}
+                    onMouseEnter={e => { e.currentTarget.style.background = C.accentLt; e.currentTarget.style.borderColor = C.accent; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = C.bg; e.currentTarget.style.borderColor = C.border; }}>
+                    {btn.label}
+                  </button>
+                ))}
+                <span style={{ marginLeft: 'auto', fontSize: '10px', color: descOver ? C.danger : C.mutedLt, fontWeight: descOver ? '700' : '400', alignSelf: 'center' }}>
+                  {descLen}/200
+                </span>
+              </div>
+              <div
+                ref={descRef}
+                contentEditable
+                suppressContentEditableWarning
+                data-placeholder="Describe tu ticket..."
+                onInput={e => {
+                  const raw = e.currentTarget.innerText;
+                  set('description', raw);
+                }}
+                style={{
+                  minHeight: '110px', padding: '12px 14px',
+                  borderRadius: '10px', border: '1.5px solid ' + (descOver ? C.danger : C.border),
+                  background: C.surface, color: C.text, fontSize: '14px',
+                  lineHeight: '1.7', fontFamily: 'inherit',
+                  outline: 'none', wordBreak: 'break-word', overflowWrap: 'break-word',
+                  whiteSpace: 'pre-wrap', cursor: 'text',
+                }}
+                onFocus={e => { if (!descOver) { e.currentTarget.style.borderColor = C.blue; e.currentTarget.style.boxShadow = '0 0 0 3px ' + C.accentLt; } }}
+                onBlur={e => { e.currentTarget.style.borderColor = descOver ? C.danger : C.border; e.currentTarget.style.boxShadow = 'none'; }}
+              />
+              {descOver && <p style={{ margin: '3px 0 0', fontSize: '10px', color: C.danger, fontWeight: '600' }}>Has superado el límite de 200 caracteres.</p>}
             </div>
+
+            {/* Link field */}
+            <div>
+              <label style={lbl}>🔗 Pega tu link <span style={{ textTransform: 'none', fontWeight: '400', color: C.muted, letterSpacing: 0 }}>(opcional)</span></label>
+              <input
+                style={{ ...inp, fontFamily: 'monospace', fontSize: '12px' }}
+                value={form.link}
+                onChange={e => set('link', e.target.value)}
+                placeholder="https://docs.google.com/..."
+                type="url"
+                onFocus={e => { e.target.style.borderColor = C.blue; e.target.style.boxShadow = '0 0 0 3px ' + C.accentLt; }}
+                onBlur={e => { e.target.style.borderColor = C.border; e.target.style.boxShadow = 'none'; }}
+              />
+            </div>
+
             <div>
               <label style={lbl}>Asignar a *</label>
               <select value={form.assigned_to} onChange={e => set('assigned_to', e.target.value)} required style={sel}>
@@ -731,29 +859,22 @@ function NewTaskModal({ profiles, currentUserId, onClose, onCreated, preAssignTo
               </div>
               <div>
                 <label style={lbl}>Fecha límite</label>
-                <input
-                  type="datetime-local"
-                  value={form.due_date}
-                  min={minDatetime}
-                  onChange={handleDueDateChange}
-                  style={inp}
-                  onFocus={e => { e.target.style.borderColor = C.blue; e.target.style.boxShadow = `0 0 0 3px ${C.accentLt}`; }}
-                  onBlur={e => { e.target.style.borderColor = C.border; e.target.style.boxShadow = 'none'; }}
-                />
+                <input type="datetime-local" value={form.due_date} min={minDatetime} onChange={handleDueDateChange} style={inp}
+                  onFocus={e => { e.target.style.borderColor = C.blue; e.target.style.boxShadow = '0 0 0 3px ' + C.accentLt; }}
+                  onBlur={e => { e.target.style.borderColor = C.border; e.target.style.boxShadow = 'none'; }} />
               </div>
             </div>
             <div>
               <label style={lbl}>Adjuntar archivo <span style={{ textTransform: 'none', fontWeight: '400', color: C.muted, letterSpacing: 0 }}>(PDF, Excel, CSV, PNG, JPG · máx. 10 MB)</span></label>
               <div onClick={() => fileRef.current?.click()}
-                style={{ border: `2px dashed ${file ? C.blue : C.border}`, borderRadius: '12px', padding: '20px', textAlign: 'center', cursor: 'pointer', background: file ? C.accentLt : C.bg, transition: 'all 0.2s' }}
+                style={{ border: '2px dashed ' + (file ? C.blue : C.border), borderRadius: '12px', padding: '20px', textAlign: 'center', cursor: 'pointer', background: file ? C.accentLt : C.bg, transition: 'all 0.2s' }}
                 onMouseEnter={e => { if (!file) { e.currentTarget.style.borderColor = C.accent; e.currentTarget.style.background = C.accentLt; } }}
                 onMouseLeave={e => { if (!file) { e.currentTarget.style.borderColor = C.border; e.currentTarget.style.background = C.bg; } }}>
                 <input ref={fileRef} type="file" accept=".pdf,.xlsx,.xls,.csv,.png,.jpg,.jpeg" onChange={handleFileChange} style={{ display: 'none' }} />
                 {file ? (
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
                     {isImage(file) ? (
-                      <img src={URL.createObjectURL(file)} alt="preview"
-                        style={{ width: 40, height: 40, borderRadius: '8px', objectFit: 'cover', border: `1px solid ${C.border}` }} />
+                      <img src={URL.createObjectURL(file)} alt="preview" style={{ width: 40, height: 40, borderRadius: '8px', objectFit: 'cover', border: '1px solid ' + C.border }} />
                     ) : (
                       <FileText size={20} color={C.blue} />
                     )}
@@ -773,10 +894,10 @@ function NewTaskModal({ profiles, currentUserId, onClose, onCreated, preAssignTo
                 )}
               </div>
             </div>
-            {error && <div style={{ padding: '10px 14px', background: C.dangerLt, border: `1.5px solid #FECACA`, borderRadius: '10px', color: C.danger, fontSize: '12px', fontWeight: '600' }}>{error}</div>}
-            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 4, paddingTop: 16, borderTop: `1px solid ${C.border}` }}>
-              <button type="button" onClick={onClose} style={{ padding: '10px 20px', borderRadius: '20px', border: `1.5px solid ${C.border}`, background: 'transparent', color: C.muted, fontSize: '13px', fontWeight: '600', cursor: 'pointer' }}>Cancelar</button>
-              <button type="submit" disabled={loading} style={{ padding: '10px 24px', borderRadius: '20px', border: 'none', background: `linear-gradient(135deg, ${C.navy} 0%, ${C.blue} 100%)`, color: '#fff', fontSize: '13px', fontWeight: '700', cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.75 : 1, display: 'flex', alignItems: 'center', gap: 7, boxShadow: '0 4px 14px rgba(37,99,235,0.30)' }}>
+            {error && <div style={{ padding: '10px 14px', background: C.dangerLt, border: '1.5px solid #FECACA', borderRadius: '10px', color: C.danger, fontSize: '12px', fontWeight: '600' }}>{error}</div>}
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 4, paddingTop: 16, borderTop: '1px solid ' + C.border }}>
+              <button type="button" onClick={onClose} style={{ padding: '10px 20px', borderRadius: '20px', border: '1.5px solid ' + C.border, background: 'transparent', color: C.muted, fontSize: '13px', fontWeight: '600', cursor: 'pointer' }}>Cancelar</button>
+              <button type="submit" disabled={loading || descOver} style={{ padding: '10px 24px', borderRadius: '20px', border: 'none', background: 'linear-gradient(135deg, ' + C.navy + ' 0%, ' + C.blue + ' 100%)', color: '#fff', fontSize: '13px', fontWeight: '700', cursor: (loading || descOver) ? 'not-allowed' : 'pointer', opacity: (loading || descOver) ? 0.75 : 1, display: 'flex', alignItems: 'center', gap: 7, boxShadow: '0 4px 14px rgba(37,99,235,0.30)' }}>
                 {loading ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <Send size={14} />}
                 {loading ? 'Creando...' : 'Crear Ticket'}
               </button>
@@ -1864,8 +1985,15 @@ export default function App() {
     if (data) setTasks(prev => prev.map(t => t.id === taskId ? data : t));
   };
 
-  const handleDelete = async (taskId) => {
-    if (!window.confirm('¿Eliminar este ticket?')) return;
+  const [deleteConfirm, setDeleteConfirm] = useState(null); // taskId a eliminar
+
+  const handleDelete = (taskId) => {
+    setDeleteConfirm(taskId);
+  };
+
+  const confirmDelete = async () => {
+    const taskId = deleteConfirm;
+    setDeleteConfirm(null);
     setTasks(prev => prev.filter(t => t.id !== taskId));
     const { error } = await supabase.from('tasks').delete().eq('id', taskId);
     if (error) { console.error('Error deleting task:', error); loadTasks(); }
@@ -1992,6 +2120,7 @@ export default function App() {
           *{box-sizing:border-box} body{margin:0}
           ::-webkit-scrollbar{width:4px} ::-webkit-scrollbar-track{background:transparent} ::-webkit-scrollbar-thumb{background:${C.border};border-radius:4px}
           input::placeholder{color:${C.mutedLt}} textarea::placeholder{color:${C.mutedLt}}
+          [contenteditable]:empty:before{content:attr(data-placeholder);color:${C.mutedLt};pointer-events:none}
           select option{background:${C.surface};color:${C.text}}
         `}</style>
 
@@ -2195,7 +2324,7 @@ export default function App() {
 
                 {/* Sub-tabs */}
                 <div style={{ flex: 1, overflowY: 'auto', padding: '10px 8px 16px' }}>
-                  <div style={{ fontSize: '9px', fontWeight: '700', color: 'rgba(255,255,255,0.3)', letterSpacing: '0.12em', textTransform: 'uppercase', padding: '6px 8px 10px' }}>Navegación</div>
+                  <div style={{ fontSize: '9px', fontWeight: '700', color: 'rgba(255,255,255,0.3)', letterSpacing: '0.12em', textTransform: 'uppercase', padding: '6px 8px 10px' }}></div>
                   {[
                     { id: 'mine',      label: 'Mis Pendientes', icon: Clock           },
                     { id: 'all',       label: 'Todas',          icon: LayoutDashboard },
@@ -2346,6 +2475,36 @@ export default function App() {
         {selectedTask && (
           <TaskDetailModal task={selectedTask} profiles={profiles} currentUserId={session.user.id}
             onClose={() => setSelectedTask(null)} onStatusChange={handleStatusChange} onDelete={handleDelete} />
+        )}
+        {/* Modal confirmar eliminar */}
+        {deleteConfirm && (
+          <>
+            <div onClick={() => setDeleteConfirm(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(10,15,30,0.55)', backdropFilter: 'blur(6px)', zIndex: 1999 }} />
+            <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', zIndex: 2000, background: C.surface, borderRadius: '20px', padding: '28px', width: '320px', border: '1.5px solid ' + C.border, boxShadow: '0 24px 64px rgba(27,58,107,0.22)', animation: 'slideDown 0.15s ease-out' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+                <div style={{ width: 44, height: 44, borderRadius: '12px', background: C.dangerLt, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <Trash2 size={20} color={C.danger} />
+                </div>
+                <div>
+                  <div style={{ fontSize: '15px', fontWeight: '800', color: C.navy }}>Eliminar ticket</div>
+                  <div style={{ fontSize: '11px', color: C.muted }}>Esta acción no se puede deshacer</div>
+                </div>
+              </div>
+              <p style={{ margin: '0 0 20px', fontSize: '13px', color: C.text, lineHeight: '1.6', background: C.bg, padding: '12px 14px', borderRadius: '10px', border: '1px solid ' + C.border }}>
+                ¿Estás seguro de que quieres eliminar este ticket permanentemente?
+              </p>
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button onClick={() => setDeleteConfirm(null)}
+                  style={{ flex: 1, padding: '10px', borderRadius: '12px', border: '1.5px solid ' + C.border, background: 'transparent', color: C.muted, fontSize: '13px', fontWeight: '600', cursor: 'pointer' }}>
+                  Cancelar
+                </button>
+                <button onClick={confirmDelete}
+                  style={{ flex: 1, padding: '10px', borderRadius: '12px', border: 'none', background: 'linear-gradient(135deg, #DC2626, #EF4444)', color: '#fff', fontSize: '13px', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, boxShadow: '0 4px 14px rgba(220,38,38,0.30)' }}>
+                  <Trash2 size={13} /> Eliminar
+                </button>
+              </div>
+            </div>
+          </>
         )}
         {showNotifs && <div style={{ position: 'fixed', inset: 0, zIndex: 99 }} onClick={() => setShowNotifs(false)} />}
           </div>
