@@ -720,7 +720,7 @@ function NewTaskModal({ profiles, currentUserId, onClose, onCreated, preAssignTo
     e.preventDefault();
     if (!form.title.trim()) return setError('El título es obligatorio.');
     if (!form.assigned_to)  return setError('Debes asignar la tarea a alguien.');
-    if (form.description.length > 200) return setError('La descripción no puede superar 200 caracteres.');
+    if (form.description.length > 1000) return setError('La descripción no puede superar 1000 caracteres.');
     if (form.due_date) {
       const selected = new Date(form.due_date);
       const now = new Date();
@@ -765,7 +765,7 @@ function NewTaskModal({ profiles, currentUserId, onClose, onCreated, preAssignTo
   const lbl = { display: 'block', fontSize: '11px', fontWeight: '700', color: C.navy, marginBottom: 6, letterSpacing: '0.05em', textTransform: 'uppercase' };
   const isImage = (f) => f && f.type && f.type.startsWith('image/');
   const descLen = form.description.length;
-  const descOver = descLen > 200;
+  const descOver = descLen > 1000;
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(10,15,30,0.55)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 16 }}>
@@ -788,7 +788,7 @@ function NewTaskModal({ profiles, currentUserId, onClose, onCreated, preAssignTo
 
             {/* Description with mini toolbar */}
             <div>
-              <label style={lbl}>Descripción <span style={{ textTransform: 'none', fontWeight: '400', color: C.muted, letterSpacing: 0 }}>(máx. 200 caracteres)</span></label>
+              <label style={lbl}>Descripción <span style={{ textTransform: 'none', fontWeight: '400', color: C.muted, letterSpacing: 0 }}>(máx. 1000 caracteres)</span></label>
               {/* Toolbar */}
               <div style={{ display: 'flex', gap: 4, marginBottom: 6 }}>
                 {[
@@ -803,7 +803,7 @@ function NewTaskModal({ profiles, currentUserId, onClose, onCreated, preAssignTo
                   </button>
                 ))}
                 <span style={{ marginLeft: 'auto', fontSize: '10px', color: descOver ? C.danger : C.mutedLt, fontWeight: descOver ? '700' : '400', alignSelf: 'center' }}>
-                  {descLen}/200
+                  {descLen}/1000
                 </span>
               </div>
               <div
@@ -826,7 +826,7 @@ function NewTaskModal({ profiles, currentUserId, onClose, onCreated, preAssignTo
                 onFocus={e => { if (!descOver) { e.currentTarget.style.borderColor = C.blue; e.currentTarget.style.boxShadow = '0 0 0 3px ' + C.accentLt; } }}
                 onBlur={e => { e.currentTarget.style.borderColor = descOver ? C.danger : C.border; e.currentTarget.style.boxShadow = 'none'; }}
               />
-              {descOver && <p style={{ margin: '3px 0 0', fontSize: '10px', color: C.danger, fontWeight: '600' }}>Has superado el límite de 200 caracteres.</p>}
+              {descOver && <p style={{ margin: '3px 0 0', fontSize: '10px', color: C.danger, fontWeight: '600' }}>Has superado el límite de 1000 caracteres.</p>}
             </div>
 
             {/* Link field */}
