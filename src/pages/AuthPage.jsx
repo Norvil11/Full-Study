@@ -146,7 +146,7 @@ export function AuthPage() {
 
   const titles = {
     login: { heading: 'Bienvenido de vuelta', sub: 'Inicia sesión en tu workspace' },
-    register: { heading: 'Crear cuenta', sub: 'Únete a Hanter Workspace' },
+    register: { heading: 'Crear cuenta', sub: 'Únete a MyWorkspace' },
     reset: { heading: 'Restablecer contraseña', sub: 'Te enviamos un enlace a tu correo' },
   }
 
@@ -161,7 +161,7 @@ export function AuthPage() {
             <Zap size={22} className="text-white" />
           </div>
           <h1 className="text-xl font-bold text-white tracking-tight">
-            Hanter<span className="text-indigo-400">.</span>
+            My<span className="text-indigo-400">.</span>
           </h1>
           <p className="text-xs text-zinc-600 mt-0.5 tracking-wide">WORKSPACE</p>
         </div>

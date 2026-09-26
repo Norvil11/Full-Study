@@ -41,7 +41,7 @@ export function Sidebar({ active, onChange }) {
         </div>
         {!collapsed && (
           <span className="font-semibold text-sm text-white tracking-tight truncate">
-            Hanter<span className="text-indigo-400">.</span>
+            My<span className="text-indigo-400">.</span>
           </span>
         )}
       </div>
