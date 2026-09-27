@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from './lib/supabase';
-import { C, CATEGORY_CONFIG, isOverdue } from './lib/shared';
+import { C, CATEGORY_CONFIG, PRIORITY_CONFIG, isOverdue } from './lib/shared';
 import { useGoogleCalendar, taskEventBody } from './lib/googleCalendar';
 import { taskColor, categoryColor, taskColorIdForGoogle } from './lib/colors';
 import ColorPicker from './components/ColorPicker';
 import CalendarView from './components/CalendarView';
+import StatsView from './components/StatsView';
+import StatCard from './components/StatCard';
 import { fmtRange, fmtDateTime, fmtTime } from './lib/dates';
 import DateTime15Picker from './components/DateTime15Picker';
 import {
@@ -20,12 +22,6 @@ import {
 // ─── CONSTANTS ────────────────────────────────────────────────────────────────
 const BG_IMAGE = "https://img.magnific.com/foto-gratis/colegas-sonrientes-tiro-medio-trabajo_23-2149308453.jpg?semt=ais_hybrid&w=740&q=80";
 
-const PRIORITY_CONFIG = {
-  low:    { label: 'Baja',    color: C.accent,  bg: C.accentLt,  border: '#BFDBFE' },
-  medium: { label: 'Media',   color: C.warn,    bg: C.warnLt,    border: '#FDE68A' },
-  high:   { label: 'Alta',    color: C.danger,  bg: C.dangerLt,  border: '#FECACA' },
-  urgent: { label: 'Urgente', color: C.violet,  bg: C.violetLt,  border: '#DDD6FE' },
-};
 
 const STATUS_COLS = [
   { status: 'pending',     label: 'Por Hacer',  dot: C.mutedLt,  tag: '#F1F5F9',   tagText: C.muted   },
@@ -868,78 +864,6 @@ function NewTaskModal({ currentUserId, onClose, onCreated, initialDueDate = null
   );
 }
 
-// ─── STAT CARD ────────────────────────────────────────────────────────────────
-function StatCard({ icon: Icon, label, value, iconColor, iconBg, accent, sublabel }) {
-  return (
-    <div style={{
-      background: C.surface,
-      border: `1px solid ${C.border}`,
-      borderRadius: '8px',
-      padding: '18px 20px 16px',
-      display: 'flex',
-      flexDirection: 'column',
-      gap: '10px',
-      flex: 1,
-      minWidth: 0,
-      position: 'relative',
-      overflow: 'hidden',
-      boxShadow: '0 1px 3px rgba(15,32,64,0.05)',
-      transition: 'box-shadow 0.15s',
-    }}
-      onMouseEnter={e => { e.currentTarget.style.boxShadow = '0 3px 10px rgba(15,32,64,0.09)'; }}
-      onMouseLeave={e => { e.currentTarget.style.boxShadow = '0 1px 3px rgba(15,32,64,0.05)'; }}
-    >
-      {/* Accent stripe top */}
-      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '2px', background: accent, borderRadius: '8px 8px 0 0' }} />
-
-      {/* Header row */}
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
-        <div style={{
-          width: 44, height: 44, borderRadius: '13px',
-          background: iconBg,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          flexShrink: 0,
-          boxShadow: `0 4px 12px ${accent}28`,
-        }}>
-          <Icon size={20} color={iconColor} />
-        </div>
-        <div style={{
-          fontSize: '10px', fontWeight: '700', color: accent,
-          background: `${accent}14`,
-          padding: '3px 9px', borderRadius: '20px',
-          letterSpacing: '0.04em', textTransform: 'uppercase',
-          border: `1px solid ${accent}30`,
-        }}>
-          {sublabel || 'Total'}
-        </div>
-      </div>
-
-      {/* Number */}
-      <div>
-        <div style={{
-          fontSize: '32px', fontWeight: '700', color: C.navy,
-          letterSpacing: '-0.03em', lineHeight: 1,
-        }}>{value}</div>
-        <div style={{ fontSize: '11px', color: C.muted, fontWeight: '500', marginTop: 4 }}>{label}</div>
-      </div>
-
-      {/* Progress bar */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-        <div style={{ height: 5, background: `${accent}18`, borderRadius: '10px', overflow: 'hidden' }}>
-          <div style={{
-            height: '100%',
-            width: value > 0 ? `${Math.min(100, (value / 15) * 100)}%` : '4px',
-            background: `linear-gradient(90deg, ${accent}, ${accent}aa)`,
-            borderRadius: '10px',
-            transition: 'width 0.6s cubic-bezier(0.34, 1.56, 0.64, 1)',
-            minWidth: value > 0 ? undefined : '4px',
-          }} />
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // ─── MAIN APP ─────────────────────────────────────────────────────────────────
 export default function App() {
   const [mainView,      setMainView]      = useState('tickets');
@@ -1144,6 +1068,11 @@ export default function App() {
   const myPending    = tasks.filter(t => t.status !== 'completed').length;
   const myCompleted  = tasks.filter(t => t.status === 'completed').length;
   const overdueCount = tasks.filter(t => isOverdue(t.due_date, t.status)).length;
+  const totalTasks   = tasks.length;
+  // Barras de progreso con significado real (antes era value/15, un número arbitrario)
+  const pendingPct   = totalTasks > 0 ? (myPending / totalTasks) * 100 : 0;
+  const completedPct = totalTasks > 0 ? (myCompleted / totalTasks) * 100 : 0;
+  const overduePct   = myPending > 0 ? (overdueCount / myPending) * 100 : (overdueCount > 0 ? 100 : 0);
 
   // ── FILTERED TASKS ────────────────────────────────────────────────────────
   const filteredTasks = tasks.filter(t => {
@@ -1221,6 +1150,7 @@ export default function App() {
             {[
               { id: 'tickets',     label: 'Tickets'       },
               { id: 'calendar',    label: 'Calendario'    },
+              { id: 'stats',       label: 'Estadísticas'  },
             ].map(({ id, label }) => {
               const isActive = mainView === id;
               return (
@@ -1352,9 +1282,9 @@ export default function App() {
             {mainView === 'tickets' && (
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24, gap: 16, flexWrap: 'wrap' }}>
                 <div style={{ display: 'flex', gap: 14, flex: 1, minWidth: 0 }}>
-                  <StatCard icon={Clock} label="Mis Pendientes" value={myPending} iconColor={C.accent} iconBg={C.accentLt} accent={C.accent} sublabel="tareas sin completar" />
-                  <StatCard icon={CheckCircle2} label="Completadas" value={myCompleted} iconColor={C.success} iconBg={C.successLt} accent={C.success} sublabel="tareas finalizadas" />
-                  <StatCard icon={AlertCircle} label="Vencidas" value={overdueCount} iconColor={C.danger} iconBg={C.dangerLt} accent={C.danger} sublabel="requieren atención" />
+                  <StatCard icon={Clock} label="Mis Pendientes" value={myPending} iconColor={C.accent} iconBg={C.accentLt} accent={C.accent} sublabel="tareas sin completar" pct={pendingPct} />
+                  <StatCard icon={CheckCircle2} label="Completadas" value={myCompleted} iconColor={C.success} iconBg={C.successLt} accent={C.success} sublabel="tareas finalizadas" pct={completedPct} />
+                  <StatCard icon={AlertCircle} label="Vencidas" value={overdueCount} iconColor={C.danger} iconBg={C.dangerLt} accent={C.danger} sublabel="requieren atención" pct={overduePct} />
                 </div>
                 <button onClick={() => { setNewTaskDate(null); setShowNewTask(true); }}
                   style={{ padding: '9px 18px', background: C.navy, color: '#fff', border: 'none', borderRadius: '6px', fontSize: '13px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, boxShadow: '0 1px 4px rgba(15,32,64,0.20)', transition: 'all 0.15s', flexShrink: 0 }}
@@ -1466,6 +1396,11 @@ export default function App() {
                   setNewTaskDate(due);
                   setShowNewTask(true);
                 }} />
+            )}
+
+            {/* ── ESTADÍSTICAS VIEW ── */}
+            {mainView === 'stats' && (
+              <StatsView tasks={tasks} google={google} onGoToCalendar={() => setMainView('calendar')} />
             )}
 
           </main>

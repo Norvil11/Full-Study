@@ -30,6 +30,14 @@ export const CATEGORY_CONFIG = {
   otro:        { label: 'Otro',        icon: Tag,           color: '#0F766E', bg: '#CCFBF1',  border: '#99F6E4' },
 };
 
+// Prioridad de tarea (columna tasks.priority)
+export const PRIORITY_CONFIG = {
+  low:    { label: 'Baja',    color: C.accent,  bg: C.accentLt,  border: '#BFDBFE' },
+  medium: { label: 'Media',   color: C.warn,    bg: C.warnLt,    border: '#FDE68A' },
+  high:   { label: 'Alta',    color: C.danger,  bg: C.dangerLt,  border: '#FECACA' },
+  urgent: { label: 'Urgente', color: C.violet,  bg: C.violetLt,  border: '#DDD6FE' },
+};
+
 export function isOverdue(due, status) {
   if (!due || status === 'completed') return false;
   return new Date(due) < new Date();
