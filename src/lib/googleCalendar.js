@@ -8,7 +8,6 @@ const SCOPE       = 'https://www.googleapis.com/auth/calendar.events';
 const GIS_SRC     = 'https://accounts.google.com/gsi/client';
 const API_BASE    = 'https://www.googleapis.com/calendar/v3/calendars/primary/events';
 const STORAGE_KEY = 'gcal_token';
-const EVENT_MINUTES = 30; // duración del evento creado a partir de la fecha límite
 
 export class GoogleAuthError extends Error {
   constructor(message = 'La sesión de Google expiró. Vuelve a conectar Google Calendar.') {
@@ -60,15 +59,19 @@ async function apiFetch(token, url, options = {}) {
   return res.status === 204 ? null : res.json();
 }
 
-function taskToEvent(task) {
-  const start = new Date(task.due_date);
-  const end = new Date(start.getTime() + EVENT_MINUTES * 60 * 1000);
+// start/end en formato de la API para un evento con hora
+export function timedRange(start, end) {
   const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  return { start: { dateTime: start.toISOString(), timeZone }, end: { dateTime: end.toISOString(), timeZone } };
+}
+
+// Evento que representa el bloque programado de una tarea
+export function taskEventBody(task) {
   return {
-    summary: task.title,
-    description: task.description || undefined,
-    start: { dateTime: start.toISOString(), timeZone },
-    end:   { dateTime: end.toISOString(),   timeZone },
+    summary: '📌 ' + task.title,
+    description: task.description || '',
+    ...timedRange(new Date(task.scheduled_start), new Date(task.scheduled_end)),
+    extendedProperties: { private: { myworkspaceTaskId: task.id } },
   };
 }
 
@@ -149,10 +152,14 @@ export function useGoogleCalendar() {
     return (data.items || []).filter(ev => ev.status !== 'cancelled');
   }), [call]);
 
-  const createEvent = useCallback((task) => call(async (t) => {
-    const ev = await apiFetch(t, API_BASE, { method: 'POST', body: JSON.stringify(taskToEvent(task)) });
-    return ev.id;
-  }), [call]);
+  // body en formato de la API v3 (summary, start, end, description, location…). Devuelve el evento.
+  const insertEvent = useCallback((body) => call(t =>
+    apiFetch(t, API_BASE, { method: 'POST', body: JSON.stringify(body) })
+  ), [call]);
+
+  const patchEvent = useCallback((eventId, body) => call(t =>
+    apiFetch(t, API_BASE + '/' + encodeURIComponent(eventId), { method: 'PATCH', body: JSON.stringify(body) })
+  ), [call]);
 
   const deleteEvent = useCallback((eventId) => call(async (t) => {
     try {
@@ -163,5 +170,5 @@ export function useGoogleCalendar() {
     }
   }), [call]);
 
-  return { configured, status, connect, disconnect, listEvents, createEvent, deleteEvent };
+  return { configured, status, connect, disconnect, listEvents, insertEvent, patchEvent, deleteEvent };
 }

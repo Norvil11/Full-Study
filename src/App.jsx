@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from './lib/supabase';
 import { C, CATEGORY_CONFIG, isOverdue } from './lib/shared';
-import { useGoogleCalendar } from './lib/googleCalendar';
+import { useGoogleCalendar, taskEventBody } from './lib/googleCalendar';
 import CalendarView from './components/CalendarView';
+import { fmtRange, fmtDateTime, fmtTime } from './lib/dates';
+import DateTime15Picker from './components/DateTime15Picker';
 import {
   Eye, EyeOff, LogOut, Plus, Calendar,
   CheckCircle2, Clock, AlertCircle, Trash2,
@@ -10,7 +12,7 @@ import {
   LayoutDashboard,
   Zap, FileText,
   Upload, Paperclip, ExternalLink, ChevronRight,
-  Camera, User, Edit2, Save, Trash,
+  Camera, User, Edit2, Save, Trash, CalendarClock,
 } from 'lucide-react';
 
 // ─── CONSTANTS ────────────────────────────────────────────────────────────────
@@ -40,10 +42,9 @@ function formatDate(d) {
   if (!d) return '—';
   return new Date(d).toLocaleDateString('es-PE', { day: '2-digit', month: 'short', year: 'numeric' });
 }
-// Valor 'YYYY-MM-DDTHH:mm' en hora local para <input type="datetime-local">
-function toLocalInputValue(d) {
-  const pad = n => String(n).padStart(2, '0');
-  return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+// Fecha límite con hora: "27 sep 2026, 18:00"
+function formatDueDate(d) {
+  return d ? fmtDateTime(new Date(d)) : '—';
 }
 function initials(name = '') {
   return name.split(' ').slice(0, 2).map(w => w[0]?.toUpperCase() ?? '').join('');
@@ -292,7 +293,8 @@ function ProfileMenu({ profile, currentUserId, onClose, onProfileUpdated }) {
 }
 
 // ─── TASK DETAIL MODAL ────────────────────────────────────────────────────────
-function TaskDetailModal({ task, onClose, onStatusChange, onDelete }) {
+function TaskDetailModal({ task, onClose, onStatusChange, onDelete, onUnschedule }) {
+  const [unscheduling, setUnscheduling] = useState(false);
   if (!task) return null;
   const overdue   = isOverdue(task.due_date, task.status);
   const pCfg = PRIORITY_CONFIG[task.priority] || PRIORITY_CONFIG.medium;
@@ -367,7 +369,7 @@ function TaskDetailModal({ task, onClose, onStatusChange, onDelete }) {
               { label: 'Fecha límite', content: (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6, color: overdue ? C.danger : C.text }}>
                   {overdue ? <AlertTriangle size={14} /> : <Calendar size={14} color={C.accent} />}
-                  <span style={{ fontSize: '13px', fontWeight: overdue ? '700' : '500' }}>{formatDate(task.due_date)}</span>
+                  <span style={{ fontSize: '13px', fontWeight: overdue ? '700' : '500' }}>{formatDueDate(task.due_date)}</span>
                 </div>
               )},
               { label: 'Creado el', content: (
@@ -382,6 +384,28 @@ function TaskDetailModal({ task, onClose, onStatusChange, onDelete }) {
                 {content}
               </div>
             ))}
+          </div>
+
+          {/* Horario programado (bloque de trabajo en el calendario) */}
+          <div style={{ marginBottom: 24 }}>
+            <h4 style={{ margin: '0 0 10px', fontSize: '11px', fontWeight: '700', color: C.navy, letterSpacing: '0.06em', textTransform: 'uppercase' }}>Horario programado</h4>
+            {task.scheduled_start && task.scheduled_end ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', background: C.accentLt, borderRadius: '12px', border: '1px solid #BFDBFE', flexWrap: 'wrap' }}>
+                <CalendarClock size={16} color={C.blue} />
+                <span style={{ fontSize: '13px', fontWeight: '700', color: C.navy, flex: 1 }}>
+                  {fmtRange(new Date(task.scheduled_start), new Date(task.scheduled_end))}
+                </span>
+                <button disabled={unscheduling}
+                  onClick={async () => { setUnscheduling(true); await onUnschedule(task); setUnscheduling(false); }}
+                  style={{ padding: '6px 12px', borderRadius: '20px', border: '1.5px solid ' + C.border, background: C.surface, color: C.muted, fontSize: '12px', fontWeight: '700', cursor: unscheduling ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: 5 }}>
+                  {unscheduling ? <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /> : <X size={12} />} Quitar del horario
+                </button>
+              </div>
+            ) : (
+              <p style={{ margin: 0, fontSize: '13px', color: C.mutedLt, fontStyle: 'italic' }}>
+                {task.status === 'completed' ? 'Sin horario' : 'Sin horario — arrástrala desde la bandeja "Por programar" del Calendario.'}
+              </p>
+            )}
           </div>
 
           {task.status === 'completed' && task.completed_at && (
@@ -520,7 +544,10 @@ function TicketCard({ task, onStatusChange, onDelete, onViewDetail }) {
         {task.due_date && task.status !== 'completed' && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 4, color: overdue ? C.danger : daysLeft !== null && daysLeft <= 2 ? C.warn : C.muted, fontWeight: overdue ? '700' : daysLeft !== null && daysLeft <= 2 ? '600' : '400' }}>
             {overdue ? <AlertTriangle size={11} /> : <Calendar size={11} />}
-            {overdue ? 'Vencido: ' + formatDate(task.due_date) : daysLeft === 0 ? '⚡ Vence hoy' : daysLeft === 1 ? '⚠️ Vence mañana' : daysLeft !== null && daysLeft <= 3 ? '⚠️ ' + daysLeft + ' días' : 'Vence: ' + formatDate(task.due_date)}
+            {overdue ? 'Vencido: ' + formatDueDate(task.due_date)
+              : daysLeft === 0 ? '⚡ Vence hoy, ' + fmtTime(new Date(task.due_date))
+              : daysLeft === 1 ? '⚠️ Vence mañana, ' + fmtTime(new Date(task.due_date))
+              : (daysLeft !== null && daysLeft <= 3 ? '⚠️ ' : '') + 'Vence: ' + formatDueDate(task.due_date)}
           </div>
         )}
       </div>
@@ -562,12 +589,10 @@ function TicketCard({ task, onStatusChange, onDelete, onViewDetail }) {
 }
 
 // ─── NEW TASK MODAL ───────────────────────────────────────────────────────────
-function NewTaskModal({ currentUserId, onClose, onCreated, initialDueDate = '', google = null }) {
+function NewTaskModal({ currentUserId, onClose, onCreated, initialDueDate = null }) {
   const [form, setForm] = useState({
     title: '', description: '', link: '', category: 'otro', priority: 'medium', due_date: initialDueDate
   });
-  const [addToGoogle, setAddToGoogle] = useState(true);
-  const showGoogleOption = google?.status === 'connected' && Boolean(form.due_date);
   const [file, setFile]       = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState('');
@@ -596,22 +621,6 @@ function NewTaskModal({ currentUserId, onClose, onCreated, initialDueDate = '', 
     }
   };
 
-  const handleDueDateChange = (e) => {
-    const val = e.target.value;
-    if (val) {
-      const selected = new Date(val);
-      const now = new Date();
-      now.setSeconds(0, 0);
-      if (selected < now) {
-        setError('Elige una fecha válida. La fecha límite no puede ser anterior a la actual.');
-        set('due_date', '');
-        return;
-      }
-    }
-    setError('');
-    set('due_date', val);
-  };
-
   // Toolbar actions for description textarea
   const descRef = useRef();
   const applyFormat = (tag) => {
@@ -632,11 +641,8 @@ function NewTaskModal({ currentUserId, onClose, onCreated, initialDueDate = '', 
     if (!form.title.trim()) return setError('El título es obligatorio.');
     if (!CATEGORY_CONFIG[form.category]) return setError('Selecciona el tipo de tarea.');
     if (form.description.length > 1000) return setError('La descripción no puede superar 1000 caracteres.');
-    if (form.due_date) {
-      const selected = new Date(form.due_date);
-      const now = new Date();
-      now.setSeconds(0, 0);
-      if (selected < now) return setError('Elige una fecha válida. La fecha límite no puede ser anterior a la actual.');
+    if (form.due_date && form.due_date < new Date()) {
+      return setError('Elige una fecha válida. La fecha límite no puede ser anterior a la actual.');
     }
     setLoading(true); setError('');
     let fileUrl = null, fileName = null;
@@ -654,8 +660,7 @@ function NewTaskModal({ currentUserId, onClose, onCreated, initialDueDate = '', 
       ? (form.link.trim() ? form.description.trim() + '\n\n🔗 ' + form.link.trim() : form.description.trim())
       : (form.link.trim() ? '🔗 ' + form.link.trim() : null);
 
-    // datetime-local no lleva zona horaria: se envía en ISO (UTC) para que timestamptz la guarde bien
-    const dueIso = form.due_date ? new Date(form.due_date).toISOString() : null;
+    const dueIso = form.due_date ? form.due_date.toISOString() : null;
     const newTask = {
       title: form.title.trim(), description: fullDesc,
       assigned_to: currentUserId, category: form.category, priority: form.priority,
@@ -663,28 +668,12 @@ function NewTaskModal({ currentUserId, onClose, onCreated, initialDueDate = '', 
       file_url: fileUrl, file_name: fileName,
     };
 
-    // Primero el evento: si Google falla no se crea la tarea y se puede reintentar sin duplicar
-    if (showGoogleOption && addToGoogle) {
-      try {
-        newTask.google_event_id = await google.createEvent(newTask);
-      } catch (gErr) {
-        setLoading(false);
-        return setError(gErr.isAuthError
-          ? 'La sesión de Google expiró. Reconecta Google Calendar (en la pestaña Calendario) o desmarca la opción.'
-          : 'No se pudo crear el evento en Google Calendar: ' + gErr.message);
-      }
-    }
-
     const { data, error: err } = await supabase.from('tasks').insert([newTask]).select().single();
     setLoading(false);
-    if (err) {
-      if (newTask.google_event_id) google.deleteEvent(newTask.google_event_id).catch(() => {});
-      return setError(err.message);
-    }
+    if (err) return setError(err.message);
     onCreated(data); onClose();
   };
 
-  const minDatetime = toLocalInputValue(new Date());
 
   const sel = { width: '100%', height: '44px', padding: '0 14px', borderRadius: '10px', border: '1.5px solid ' + C.border, background: C.surface, color: C.text, fontSize: '14px', outline: 'none', boxSizing: 'border-box', appearance: 'none', cursor: 'pointer', fontFamily: 'inherit' };
   const inp = { width: '100%', height: '44px', padding: '0 14px', borderRadius: '10px', border: '1.5px solid ' + C.border, background: C.surface, color: C.text, fontSize: '14px', outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit' };
@@ -793,7 +782,7 @@ function NewTaskModal({ currentUserId, onClose, onCreated, initialDueDate = '', 
                 })}
               </div>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '130px 1fr', gap: 12 }}>
               <div>
                 <label style={lbl}>Prioridad</label>
                 <select value={form.priority} onChange={e => set('priority', e.target.value)} style={sel}>
@@ -802,19 +791,9 @@ function NewTaskModal({ currentUserId, onClose, onCreated, initialDueDate = '', 
               </div>
               <div>
                 <label style={lbl}>Fecha límite</label>
-                <input type="datetime-local" value={form.due_date} min={minDatetime} onChange={handleDueDateChange} style={inp}
-                  onFocus={e => { e.target.style.borderColor = C.blue; e.target.style.boxShadow = '0 0 0 3px ' + C.accentLt; }}
-                  onBlur={e => { e.target.style.borderColor = C.border; e.target.style.boxShadow = 'none'; }} />
+                <DateTime15Picker value={form.due_date} onChange={d => { setError(''); set('due_date', d); }} defaultTime="23:45" />
               </div>
             </div>
-            {showGoogleOption && (
-              <label style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderRadius: '10px', border: '1.5px solid ' + (addToGoogle ? C.accent : C.border), background: addToGoogle ? C.accentLt : C.bg, cursor: 'pointer', transition: 'all 0.15s' }}>
-                <input type="checkbox" checked={addToGoogle} onChange={e => setAddToGoogle(e.target.checked)}
-                  style={{ width: 16, height: 16, accentColor: C.blue, cursor: 'pointer' }} />
-                <Calendar size={14} color={C.blue} />
-                <span style={{ fontSize: '13px', fontWeight: '600', color: C.navy }}>Agregar a Google Calendar</span>
-              </label>
-            )}
             <div>
               <label style={lbl}>Adjuntar archivo <span style={{ textTransform: 'none', fontWeight: '400', color: C.muted, letterSpacing: 0 }}>(PDF, Excel, CSV, PNG, JPG · máx. 10 MB)</span></label>
               <div onClick={() => fileRef.current?.click()}
@@ -940,12 +919,15 @@ export default function App() {
   const [tasks,         setTasks]         = useState([]);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showNewTask,   setShowNewTask]   = useState(false);
-  const [newTaskDate,   setNewTaskDate]   = useState('');
+  const [newTaskDate,   setNewTaskDate]   = useState(null);
   const [activeTab,     setActiveTab]     = useState('mine');
   const [categoryFilter, setCategoryFilter] = useState('all');
   const google = useGoogleCalendar();
   const [authLoading,   setAuthLoading]   = useState(true);
-  const [selectedTask,  setSelectedTask]  = useState(null);
+  // Se guarda el id para que el detalle siempre muestre la versión actual de la tarea
+  const [selectedTaskId, setSelectedTaskId] = useState(null);
+  const selectedTask    = tasks.find(t => t.id === selectedTaskId) || null;
+  const setSelectedTask = (task) => setSelectedTaskId(task ? task.id : null);
 
   // Auth form
   const [authMode,    setAuthMode]    = useState('login');
@@ -996,6 +978,53 @@ export default function App() {
     const { data, error } = await supabase.from('tasks').update(upd).eq('id', taskId).select().single();
     if (error) { console.error('Error updating task status:', error); loadTasks(); return; }
     if (data) setTasks(prev => prev.map(t => t.id === taskId ? data : t));
+  };
+
+  // ── Programar tareas en el calendario ─────────────────────────────────────
+  const replaceTask = (task) => setTasks(prev => prev.map(t => (t.id === task.id ? task : t)));
+
+  // Crea o actualiza el evento "📌 tarea" en Google y devuelve su id
+  const syncTaskEvent = async (task) => {
+    const body = taskEventBody(task);
+    if (task.google_event_id) {
+      try { return (await google.patchEvent(task.google_event_id, body)).id; }
+      catch (err) { if (err.status !== 404 && err.status !== 410) throw err; } // lo borraron en Google: crear otro
+    }
+    return (await google.insertEvent(body)).id;
+  };
+
+  // Guarda el bloque en Supabase y, si Google está conectado, lo sincroniza.
+  // Lanza error si no se pudo guardar; devuelve { warning } si solo falló Google.
+  const scheduleTask = async (task, start, end) => {
+    const upd = { scheduled_start: start.toISOString(), scheduled_end: end.toISOString() };
+    replaceTask({ ...task, ...upd });
+    const { data, error } = await supabase.from('tasks').update(upd).eq('id', task.id).select().single();
+    if (error) { replaceTask(task); throw new Error('No se pudo guardar el horario: ' + error.message); }
+    replaceTask(data);
+    if (google.status !== 'connected') return {};
+    try {
+      const eventId = await syncTaskEvent(data);
+      if (eventId !== data.google_event_id) {
+        const { data: linked } = await supabase.from('tasks').update({ google_event_id: eventId }).eq('id', task.id).select().single();
+        if (linked) replaceTask(linked);
+      }
+      return {};
+    } catch (err) {
+      return { warning: 'Horario guardado, pero no se pudo sincronizar con Google Calendar: ' + (err.isAuthError ? 'la sesión de Google expiró.' : err.message) };
+    }
+  };
+
+  // Devuelve la tarea a la bandeja "Por programar" y borra su evento en Google
+  const unscheduleTask = async (task) => {
+    const upd = { scheduled_start: null, scheduled_end: null };
+    if (task.google_event_id && google.status === 'connected') {
+      try { await google.deleteEvent(task.google_event_id); upd.google_event_id = null; }
+      catch (err) { console.warn('No se pudo eliminar el evento de Google:', err.message); }
+    }
+    replaceTask({ ...task, ...upd });
+    const { data, error } = await supabase.from('tasks').update(upd).eq('id', task.id).select().single();
+    if (error) { replaceTask(task); console.error('Error quitando el horario:', error); return; }
+    replaceTask(data);
   };
 
   const [deleteConfirm, setDeleteConfirm] = useState(null); // taskId a eliminar
@@ -1296,7 +1325,7 @@ export default function App() {
                   <StatCard icon={CheckCircle2} label="Completadas" value={myCompleted} iconColor={C.success} iconBg={C.successLt} accent={C.success} sublabel="tareas finalizadas" />
                   <StatCard icon={AlertCircle} label="Vencidas" value={overdueCount} iconColor={C.danger} iconBg={C.dangerLt} accent={C.danger} sublabel="requieren atención" />
                 </div>
-                <button onClick={() => { setNewTaskDate(''); setShowNewTask(true); }}
+                <button onClick={() => { setNewTaskDate(null); setShowNewTask(true); }}
                   style={{ padding: '9px 18px', background: C.navy, color: '#fff', border: 'none', borderRadius: '6px', fontSize: '13px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, boxShadow: '0 1px 4px rgba(15,32,64,0.20)', transition: 'all 0.15s', flexShrink: 0 }}
                   onMouseEnter={e => e.currentTarget.style.opacity = '0.88'}
                   onMouseLeave={e => e.currentTarget.style.opacity = '1'}>
@@ -1399,11 +1428,11 @@ export default function App() {
 
             {/* ── CALENDARIO VIEW ── */}
             {mainView === 'calendar' && (
-              <CalendarView tasks={tasks} google={google} onTaskClick={setSelectedTask}
+              <CalendarView tasks={tasks} google={google} onTaskClick={setSelectedTask} onScheduleTask={scheduleTask}
                 onDayClick={(day) => {
                   // Fecha límite al final del día elegido
-                  const due = new Date(day); due.setHours(23, 59, 0, 0);
-                  setNewTaskDate(toLocalInputValue(due));
+                  const due = new Date(day); due.setHours(23, 45, 0, 0);
+                  setNewTaskDate(due);
                   setShowNewTask(true);
                 }} />
             )}
@@ -1412,13 +1441,14 @@ export default function App() {
         </div>
 
         {showNewTask && (
-          <NewTaskModal currentUserId={session.user.id} initialDueDate={newTaskDate} google={google}
+          <NewTaskModal currentUserId={session.user.id} initialDueDate={newTaskDate}
             onClose={() => setShowNewTask(false)}
             onCreated={t => setTasks(prev => [t, ...prev])} />
         )}
         {selectedTask && (
           <TaskDetailModal task={selectedTask}
-            onClose={() => setSelectedTask(null)} onStatusChange={handleStatusChange} onDelete={handleDelete} />
+            onClose={() => setSelectedTask(null)} onStatusChange={handleStatusChange} onDelete={handleDelete}
+            onUnschedule={unscheduleTask} />
         )}
         {/* Modal confirmar eliminar */}
         {deleteConfirm && (
