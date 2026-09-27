@@ -78,6 +78,12 @@ function CategoryChip({ category }) {
 // ─── PROFILE MENU ─────────────────────────────────────────────────────────────
 function ProfileMenu({ profile, currentUserId, onClose, onProfileUpdated }) {
   const [tab, setTab] = useState('info');
+  // Cerrar con Escape
+  useEffect(() => {
+    const onKey = e => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
   const [editForm, setEditForm] = useState({
     first_name: profile?.first_name || '',
     last_name:  profile?.last_name  || '',
@@ -132,14 +138,23 @@ function ProfileMenu({ profile, currentUserId, onClose, onProfileUpdated }) {
 
   return (
     <>
-      <div style={{ position: 'fixed', inset: 0, zIndex: 199 }} onClick={onClose} />
+      <div style={{ position: 'fixed', inset: 0, background: 'rgba(10,15,30,0.15)', zIndex: 299 }} onClick={onClose} />
+      {/* Flecha apuntando a la foto del sidebar */}
       <div style={{
-        position: 'absolute', right: 0, top: 'calc(100% + 10px)',
+        position: 'fixed', left: '224px', top: '115px', zIndex: 301,
+        width: 0, height: 0,
+        borderTop: '9px solid transparent', borderBottom: '9px solid transparent',
+        borderRight: '9px solid ' + C.navy,
+        animation: 'profileSlide 0.15s ease-out',
+      }} />
+      <div style={{
+        position: 'fixed', left: '232px', top: '76px',
         background: C.surface, borderRadius: '20px', width: '300px',
+        maxHeight: 'calc(100vh - 88px)', overflowY: 'auto', overflowX: 'hidden',
         border: '1.5px solid ' + C.border,
         boxShadow: '0 16px 48px rgba(27,58,107,0.18)',
-        overflow: 'hidden', zIndex: 200,
-        animation: 'slideDown 0.15s ease-out',
+        zIndex: 300,
+        animation: 'profileSlide 0.15s ease-out',
       }}>
         {/* Header con foto */}
         <div style={{ background: 'linear-gradient(135deg, ' + C.navy + ' 0%, ' + C.blue + ' 100%)', padding: '20px', textAlign: 'center', position: 'relative' }}>
@@ -1163,6 +1178,7 @@ export default function App() {
           @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
           @keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
           @keyframes slideDown{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:translateY(0)}}
+          @keyframes profileSlide{from{opacity:0;transform:translateX(-8px)}to{opacity:1;transform:translateX(0)}}
           @keyframes fadeUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
           *{box-sizing:border-box} body{margin:0}
           ::-webkit-scrollbar{width:4px} ::-webkit-scrollbar-track{background:transparent} ::-webkit-scrollbar-thumb{background:${C.border};border-radius:2px}
@@ -1245,27 +1261,14 @@ export default function App() {
           </div>
         </header>
 
-        {/* Profile modal — centered overlay, triggered from sidebar pencil */}
+        {/* Profile panel — flotante al costado del sidebar, junto a la foto */}
           {showProfileMenu && profile && (
-            <>
-              <div
-                onClick={() => setShowProfileMenu(false)}
-                style={{ position: 'fixed', inset: 0, background: 'rgba(10,15,30,0.55)', backdropFilter: 'blur(4px)', zIndex: 299 }}
-              />
-              <div style={{
-                position: 'fixed',
-                top: '50%', left: '50%',
-                transform: 'translate(-50%, -50%)',
-                zIndex: 300,
-              }}>
-                <ProfileMenu
-                  profile={profile}
-                  currentUserId={session.user.id}
-                  onClose={() => setShowProfileMenu(false)}
-                  onProfileUpdated={handleProfileUpdated}
-                />
-              </div>
-            </>
+            <ProfileMenu
+              profile={profile}
+              currentUserId={session.user.id}
+              onClose={() => setShowProfileMenu(false)}
+              onProfileUpdated={handleProfileUpdated}
+            />
           )}
 
         {/* MAIN */}
