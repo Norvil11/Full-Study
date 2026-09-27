@@ -83,7 +83,6 @@ function ProfileMenu({ profile, currentUserId, onClose, onProfileUpdated }) {
   const [editForm, setEditForm] = useState({
     first_name: profile?.first_name || '',
     last_name:  profile?.last_name  || '',
-    cargo:      profile?.cargo      || '',
   });
   const [saving,   setSaving]   = useState(false);
   const [saveMsg,  setSaveMsg]  = useState('');
@@ -118,7 +117,7 @@ function ProfileMenu({ profile, currentUserId, onClose, onProfileUpdated }) {
     setSaving(true); setSaveErr(''); setSaveMsg('');
     const { data: updated, error } = await supabase
       .from('profiles')
-      .update({ first_name: editForm.first_name.trim(), last_name: editForm.last_name.trim(), cargo: editForm.cargo.trim() })
+      .update({ first_name: editForm.first_name.trim(), last_name: editForm.last_name.trim() })
       .eq('id', currentUserId).select().single();
     setSaving(false);
     if (error) { setSaveErr(error.message); return; }
@@ -204,11 +203,6 @@ function ProfileMenu({ profile, currentUserId, onClose, onProfileUpdated }) {
 
           <div style={{ fontSize: '15px', fontWeight: '800', color: '#fff' }}>{profile?.full_name}</div>
           <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.65)', marginTop: 2 }}>{profile?.email}</div>
-          {profile?.cargo && (
-            <div style={{ marginTop: 6, display: 'inline-block', background: 'rgba(255,255,255,0.15)', borderRadius: '20px', padding: '2px 10px', fontSize: '10px', color: 'rgba(255,255,255,0.85)', fontWeight: '600' }}>
-              {profile.cargo}
-            </div>
-          )}
         </div>
 
         {/* Tabs */}
@@ -239,7 +233,6 @@ function ProfileMenu({ profile, currentUserId, onClose, onProfileUpdated }) {
               {[
                 { label: 'Nombre completo', value: profile?.full_name },
                 { label: 'Correo',          value: profile?.email     },
-                { label: 'Cargo',           value: profile?.cargo     },
               ].map(({ label, value }) => (
                 <div key={label} style={{ background: C.bg, borderRadius: '10px', padding: '10px 12px', border: '1px solid ' + C.border }}>
                   <div style={{ fontSize: '10px', fontWeight: '700', color: C.mutedLt, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 2 }}>{label}</div>
@@ -276,13 +269,6 @@ function ProfileMenu({ profile, currentUserId, onClose, onProfileUpdated }) {
                 <label style={{ display: 'block', fontSize: '10px', fontWeight: '700', color: C.navy, marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Apellidos</label>
                 <input style={inp} value={editForm.last_name}
                   onChange={e => setEditForm(f => ({ ...f, last_name: e.target.value }))}
-                  onFocus={e => { e.target.style.borderColor = C.blue; e.target.style.background = '#fff'; }}
-                  onBlur={e =>  { e.target.style.borderColor = C.border; e.target.style.background = C.bg; }} />
-              </div>
-              <div>
-                <label style={{ display: 'block', fontSize: '10px', fontWeight: '700', color: C.navy, marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Cargo <span style={{ textTransform: 'none', fontWeight: '400', color: C.muted, letterSpacing: 0 }}>(opcional)</span></label>
-                <input style={inp} value={editForm.cargo} placeholder="Ej: Estudiante, Desarrollador..."
-                  onChange={e => setEditForm(f => ({ ...f, cargo: e.target.value }))}
                   onFocus={e => { e.target.style.borderColor = C.blue; e.target.style.background = '#fff'; }}
                   onBlur={e =>  { e.target.style.borderColor = C.border; e.target.style.background = C.bg; }} />
               </div>
@@ -886,7 +872,6 @@ export default function App() {
   const [authMode,    setAuthMode]    = useState('login');
   const [firstName,   setFirstName]   = useState('');
   const [lastName,    setLastName]    = useState('');
-  const [cargo,       setCargo]       = useState('');
   const [loginEmail,  setLoginEmail]  = useState('');
   const [password,    setPassword]    = useState('');
   const [showPass,    setShowPass]    = useState(false);
@@ -1046,20 +1031,20 @@ export default function App() {
     const email = loginEmail.trim().toLowerCase();
     const { error: err } = await supabase.auth.signUp({
       email, password,
-      options: { data: { first_name: firstName.trim(), last_name: lastName.trim(), cargo: cargo.trim(), full_name: `${firstName.trim()} ${lastName.trim()}` } },
+      options: { data: { first_name: firstName.trim(), last_name: lastName.trim(), full_name: `${firstName.trim()} ${lastName.trim()}` } },
     });
     if (err) { setAuthError(err.message); setFormLoading(false); return; }
     setAuthMode('login');
     setLoginEmail(email);
     setPassword('');
-    setFirstName(''); setLastName(''); setCargo('');
+    setFirstName(''); setLastName('');
     setFieldErrors({});
     setSuccessMsg(`¡Cuenta creada con éxito! Ya puedes ingresar con ${email}`);
     setFormLoading(false);
   };
 
   const resetForm = () => {
-    setFirstName(''); setLastName(''); setCargo('');
+    setFirstName(''); setLastName('');
     setLoginEmail(''); setPassword('');
     setFieldErrors({}); setAuthError(null); setSuccessMsg(null);
   };
@@ -1234,7 +1219,6 @@ export default function App() {
                     </button>
                   </div>
                   <div style={{ fontSize: '13px', fontWeight: '800', color: '#fff', lineHeight: 1.3, marginBottom: 4 }}>{profile?.full_name}</div>
-                  <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.45)', padding: '0 8px' }}>{profile?.cargo}</div>
                 </div>
 
                 {/* Sub-tabs */}
@@ -1541,12 +1525,6 @@ export default function App() {
                         onChange={e => { setLastName(e.target.value); setFieldErrors(x => ({ ...x, lastName: undefined })); }} required />
                       {fieldErrors.lastName && <p style={{ margin: '3px 0 0', fontSize: '10px', color: C.danger }}>{fieldErrors.lastName}</p>}
                     </div>
-                  </div>
-                  <div>
-                    <label style={darkLbl}>Cargo <span style={{ textTransform: 'none', fontWeight: '400', color: C.muted, letterSpacing: 0 }}>(opcional)</span></label>
-                    <input className="dark-input" style={darkInp}
-                      placeholder="Ej: Estudiante, Desarrollador..." value={cargo}
-                      onChange={e => setCargo(e.target.value)} />
                   </div>
                 </>
               )}
