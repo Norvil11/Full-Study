@@ -2,6 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from './lib/supabase';
 import { C, CATEGORY_CONFIG, isOverdue } from './lib/shared';
 import { useGoogleCalendar, taskEventBody } from './lib/googleCalendar';
+import { taskColor, categoryColor, taskColorIdForGoogle } from './lib/colors';
+import ColorPicker from './components/ColorPicker';
 import CalendarView from './components/CalendarView';
 import { fmtRange, fmtDateTime, fmtTime } from './lib/dates';
 import DateTime15Picker from './components/DateTime15Picker';
@@ -293,7 +295,7 @@ function ProfileMenu({ profile, currentUserId, onClose, onProfileUpdated }) {
 }
 
 // ─── TASK DETAIL MODAL ────────────────────────────────────────────────────────
-function TaskDetailModal({ task, onClose, onStatusChange, onDelete, onUnschedule }) {
+function TaskDetailModal({ task, onClose, onStatusChange, onDelete, onUnschedule, onColorChange }) {
   const [unscheduling, setUnscheduling] = useState(false);
   if (!task) return null;
   const overdue   = isOverdue(task.due_date, task.status);
@@ -384,6 +386,13 @@ function TaskDetailModal({ task, onClose, onStatusChange, onDelete, onUnschedule
                 {content}
               </div>
             ))}
+          </div>
+
+          {/* Color de la tarea (se guarda al hacer clic) */}
+          <div style={{ marginBottom: 24 }}>
+            <h4 style={{ margin: '0 0 10px', fontSize: '11px', fontWeight: '700', color: C.navy, letterSpacing: '0.06em', textTransform: 'uppercase' }}>Color</h4>
+            <ColorPicker value={task.color_id || null} onChange={id => onColorChange(task, id)}
+              defaultLabel="Según categoría" defaultColor={categoryColor(task.category)} />
           </div>
 
           {/* Horario programado (bloque de trabajo en el calendario) */}
@@ -480,7 +489,7 @@ function TicketCard({ task, onStatusChange, onDelete, onViewDetail }) {
   return (
     <div style={{
       background: C.surface, border: '1px solid ' + (overdue ? '#FCA5A5' : C.border),
-      borderLeft: '3px solid ' + pCfg.color, borderRadius: '6px', padding: '14px', marginBottom: '8px',
+      borderLeft: '3px solid ' + taskColor(task), borderRadius: '6px', padding: '14px', marginBottom: '8px',
       boxShadow: overdue ? '0 1px 4px rgba(220,38,38,0.06)' : '0 1px 2px rgba(15,32,64,0.04)',
       transition: 'box-shadow 0.15s', position: 'relative',
     }}
@@ -591,7 +600,7 @@ function TicketCard({ task, onStatusChange, onDelete, onViewDetail }) {
 // ─── NEW TASK MODAL ───────────────────────────────────────────────────────────
 function NewTaskModal({ currentUserId, onClose, onCreated, initialDueDate = null }) {
   const [form, setForm] = useState({
-    title: '', description: '', link: '', category: 'otro', priority: 'medium', due_date: initialDueDate
+    title: '', description: '', link: '', category: 'otro', color_id: null, priority: 'medium', due_date: initialDueDate
   });
   const [file, setFile]       = useState(null);
   const [loading, setLoading] = useState(false);
@@ -663,7 +672,7 @@ function NewTaskModal({ currentUserId, onClose, onCreated, initialDueDate = null
     const dueIso = form.due_date ? form.due_date.toISOString() : null;
     const newTask = {
       title: form.title.trim(), description: fullDesc,
-      assigned_to: currentUserId, category: form.category, priority: form.priority,
+      assigned_to: currentUserId, category: form.category, color_id: form.color_id, priority: form.priority,
       due_date: dueIso, created_by: currentUserId, status: 'pending',
       file_url: fileUrl, file_name: fileName,
     };
@@ -781,6 +790,11 @@ function NewTaskModal({ currentUserId, onClose, onCreated, initialDueDate = null
                   );
                 })}
               </div>
+            </div>
+            <div>
+              <label style={lbl}>Color <span style={{ textTransform: 'none', fontWeight: '400', color: C.muted, letterSpacing: 0 }}>(opcional)</span></label>
+              <ColorPicker value={form.color_id} onChange={id => set('color_id', id)}
+                defaultLabel="Según categoría" defaultColor={categoryColor(form.category)} />
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '130px 1fr', gap: 12 }}>
               <div>
@@ -1011,6 +1025,20 @@ export default function App() {
       return {};
     } catch (err) {
       return { warning: 'Horario guardado, pero no se pudo sincronizar con Google Calendar: ' + (err.isAuthError ? 'la sesión de Google expiró.' : err.message) };
+    }
+  };
+
+  // Color personalizado (null = según categoría). Optimista; si la tarea tiene evento "📌"
+  // en Google, se le envía el mismo colorId (o el más parecido al de la categoría).
+  const setTaskColor = async (task, colorId) => {
+    const updated = { ...task, color_id: colorId };
+    replaceTask(updated);
+    const { data, error } = await supabase.from('tasks').update({ color_id: colorId }).eq('id', task.id).select().single();
+    if (error) { replaceTask(task); console.error('Error guardando el color:', error); return; }
+    replaceTask(data);
+    if (data.google_event_id && google.status === 'connected') {
+      google.patchEvent(data.google_event_id, { colorId: taskColorIdForGoogle(data) })
+        .catch(err => console.warn('No se pudo cambiar el color del evento en Google:', err.message));
     }
   };
 
@@ -1448,7 +1476,7 @@ export default function App() {
         {selectedTask && (
           <TaskDetailModal task={selectedTask}
             onClose={() => setSelectedTask(null)} onStatusChange={handleStatusChange} onDelete={handleDelete}
-            onUnschedule={unscheduleTask} />
+            onUnschedule={unscheduleTask} onColorChange={setTaskColor} />
         )}
         {/* Modal confirmar eliminar */}
         {deleteConfirm && (

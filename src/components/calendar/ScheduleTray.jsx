@@ -1,6 +1,7 @@
 import React from 'react';
 import { CalendarClock, CheckCircle2, GripVertical, AlertTriangle } from 'lucide-react';
-import { C, CATEGORY_CONFIG } from '../../lib/shared';
+import { C } from '../../lib/shared';
+import { taskColor, textOn, shade } from '../../lib/colors';
 import { fmtDateTimeShort } from '../../lib/dates';
 import { canStillSchedule } from '../../lib/schedule';
 
@@ -27,26 +28,27 @@ export default function ScheduleTray({ tasks, now, dragEnabled, draggingTaskId, 
       </div>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', maxHeight: 112, overflowY: 'auto' }}>
         {tasks.map(task => {
-          const cfg = CATEGORY_CONFIG[task.category] || CATEGORY_CONFIG.otro;
           const noTime = !canStillSchedule(task, now);
           const canDrag = dragEnabled && !noTime;
           const due = task.due_date ? new Date(task.due_date) : null;
+          const bg = noTime ? C.dangerLt : taskColor(task);   // color personalizado o de la categoría
+          const fg = noTime ? C.danger : textOn(bg);
           return (
             <div key={task.id}
               onPointerDown={e => { if (e.button === 0 && canDrag) onChipPointerDown(e, task); }}
               title={noTime ? 'Ya no quedan 4 h antes de la fecha límite' : canDrag ? 'Arrastra a la grilla para programar' : task.title}
               style={{
-                display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px 6px 6px', borderRadius: '8px', maxWidth: 260,
-                background: noTime ? C.dangerLt : cfg.bg, borderLeft: '4px solid ' + (noTime ? C.danger : cfg.color),
-                boxShadow: '0 1px 2px rgba(15,32,64,0.10)', cursor: canDrag ? 'grab' : noTime ? 'not-allowed' : 'default',
+                display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px 6px 6px', borderRadius: '6px', maxWidth: 260,
+                background: bg, color: fg, borderLeft: '4px solid ' + (noTime ? C.danger : shade(bg, -0.35)),
+                boxShadow: '0 1px 3px rgba(15,32,64,0.18)', cursor: canDrag ? 'grab' : noTime ? 'not-allowed' : 'default',
                 userSelect: 'none', touchAction: 'none', opacity: draggingTaskId === task.id ? 0.4 : 1,
               }}>
               {canDrag
-                ? <GripVertical size={13} color={cfg.color} style={{ flexShrink: 0 }} />
-                : noTime ? <AlertTriangle size={13} color={C.danger} style={{ flexShrink: 0 }} /> : null}
+                ? <GripVertical size={13} style={{ flexShrink: 0, opacity: 0.8 }} />
+                : noTime ? <AlertTriangle size={13} style={{ flexShrink: 0 }} /> : null}
               <div style={{ minWidth: 0 }}>
-                <div style={{ fontSize: '12px', fontWeight: '700', color: noTime ? C.danger : C.navy, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{task.title}</div>
-                <div style={{ fontSize: '10px', fontWeight: '600', color: noTime ? C.danger : C.muted, whiteSpace: 'nowrap' }}>
+                <div style={{ fontSize: '12px', fontWeight: '700', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{task.title}</div>
+                <div style={{ fontSize: '10px', fontWeight: '600', opacity: 0.9, whiteSpace: 'nowrap' }}>
                   {noTime ? 'Sin tiempo para programar' : due ? 'Vence: ' + fmtDateTimeShort(due) : 'Sin fecha límite'}
                 </div>
               </div>

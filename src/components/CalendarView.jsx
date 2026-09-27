@@ -4,6 +4,7 @@ import {
   Loader2, LogOut, RefreshCw, AlertTriangle,
 } from 'lucide-react';
 import { C, CATEGORY_CONFIG, isOverdue } from '../lib/shared';
+import { usePalette, eventColor, taskColor, categoryColor, shade } from '../lib/colors';
 import {
   startOfDay, addDays, addMinutes, startOfWeek, dayKey, sameDay, parseLocalDate, minutesOfDay,
   snap, snapFloor, MINUTES_PER_DAY, MONTHS_SHORT,
@@ -37,20 +38,20 @@ function rangeTitle(cursor, mode, start) {
 function buildItems(tasks, events) {
   const blocks = [], dues = [], google = [];
   tasks.forEach(task => {
-    const cfg = CATEGORY_CONFIG[task.category] || CATEGORY_CONFIG.otro;
+    const bg = taskColor(task);   // color personalizado o el de la categoría
     const completed = task.status === 'completed';
     if (task.scheduled_start && task.scheduled_end) {
       blocks.push({
         key: 't-' + task.id, kind: 'task', task, title: task.title,
         start: new Date(task.scheduled_start), end: new Date(task.scheduled_end),
-        color: cfg.color, bg: cfg.bg, completed, draggable: !completed,
+        bg, completed, draggable: !completed,
       });
     }
     if (task.due_date) {
       const due = new Date(task.due_date);
       dues.push({
         key: 'd-' + task.id, kind: 'due', task, title: task.title, start: due, end: due,
-        color: isOverdue(task.due_date, task.status) ? C.danger : cfg.color, completed,
+        bg, overdue: isOverdue(task.due_date, task.status), completed,
       });
     }
   });
@@ -61,7 +62,7 @@ function buildItems(tasks, events) {
     if (linked.has(ev.id) || !ev.start) return;
     const recurring = Boolean(ev.recurringEventId);
     const own = !ev.organizer || ev.organizer.self === true; // en invitaciones solo el organizador puede cambiarlo
-    const base = { kind: 'google', event: ev, title: ev.summary || '(Sin título)', recurring, own };
+    const base = { kind: 'google', event: ev, title: ev.summary || '(Sin título)', location: ev.location, recurring, own, bg: eventColor(ev) };
     if (ev.start.dateTime) {
       const start = new Date(ev.start.dateTime);
       const end = new Date(ev.end?.dateTime || ev.start.dateTime);
@@ -175,7 +176,9 @@ export default function CalendarView({ tasks, onTaskClick, onDayClick, onSchedul
     return () => { cancelled = true; };
   }, [googleConnected, start.getTime(), end.getTime()]);
 
-  const { blocks, dues, google: googleItems } = useMemo(() => buildItems(tasks, events), [tasks, events]);
+  // palette: se recalculan los colores cuando llega la paleta / el color del calendario de Google
+  const palette = usePalette();
+  const { blocks, dues, google: googleItems } = useMemo(() => buildItems(tasks, events), [tasks, events, palette]);
 
   const timedItems  = useMemo(() => [...blocks, ...googleItems.filter(i => !i.allDay)], [blocks, googleItems]);
   const allDayByDay = useMemo(() => sortDay(groupByDay([...dues, ...googleItems.filter(i => i.allDay)], {})), [dues, googleItems]);
@@ -217,10 +220,24 @@ export default function CalendarView({ tasks, onTaskClick, onDayClick, onSchedul
     setEventModal({ initial: { start, end } });
   };
 
-  const saveEvent = async ({ title, description, location, start, end }) => {
+  // colorId null = "Predeterminado" (color del calendario): en un PATCH se envía null para quitarlo
+  const saveEvent = async ({ title, description, location, start, end, colorId }) => {
     const body = { summary: title, description, location, ...timedRange(start, end) };
-    if (eventModal?.item) replaceEvent(await google.patchEvent(eventModal.item.event.id, body));
-    else { const ev = await google.insertEvent(body); setEvents(prev => [...prev, ev]); }
+    if (eventModal?.item) replaceEvent(await google.patchEvent(eventModal.item.event.id, { ...body, colorId: colorId || null }));
+    else { const ev = await google.insertEvent(colorId ? { ...body, colorId } : body); setEvents(prev => [...prev, ev]); }
+  };
+
+  // Cambio de color inmediato desde el detalle (optimista; se revierte si Google lo rechaza)
+  const changeEventColor = async (item, colorId) => {
+    const previous = events.find(e => e.id === item.event.id) || item.event;
+    const { colorId: _old, ...rest } = previous;
+    replaceEvent(colorId ? { ...rest, colorId } : rest);
+    try {
+      replaceEvent(await google.patchEvent(previous.id, { colorId: colorId || null }));
+    } catch (err) {
+      replaceEvent(previous);
+      throw err;
+    }
   };
 
   const deleteEvent = async (item) => {
@@ -343,7 +360,7 @@ export default function CalendarView({ tasks, onTaskClick, onDayClick, onSchedul
     if (!slot) return;
     const day = startOfDay(dayList[dayIndex]);
     const anchorMin = Math.min(MINUTES_PER_DAY - 15, snapFloor(slot.min));
-    startDrag(e, { type: 'create', day, anchorMin, title: 'Nuevo evento' });
+    startDrag(e, { type: 'create', day, anchorMin, title: 'Nuevo evento', color: palette.calendarColor });
   };
 
   // Mover o estirar un item arrastrable (evento de Google o bloque de tarea)
@@ -353,15 +370,14 @@ export default function CalendarView({ tasks, onTaskClick, onDayClick, onSchedul
     const offsetMin = slot ? slot.min - minutesOfDay(item.start) : 0;
     startDrag(e, {
       type: mode, item, durMin, offsetMin, task: item.task || null,
-      title: item.title, color: item.task ? item.color : C.mutedLt, bg: item.task ? item.bg : '#F1F5F9',
+      title: item.title, color: item.bg,
       preview: { start: item.start, end: item.end },
     });
   };
 
   // Chip de la bandeja → bloque de 1 h donde se suelta
   const handleTrayPointerDown = (e, task) => {
-    const cfg = CATEGORY_CONFIG[task.category] || CATEGORY_CONFIG.otro;
-    startDrag(e, { type: 'tray', task, durMin: 60, offsetMin: 15, title: task.title, color: cfg.color, bg: cfg.bg });
+    startDrag(e, { type: 'tray', task, durMin: 60, offsetMin: 15, title: task.title, color: taskColor(task) });
   };
 
   // Pendientes o en proceso sin horario, por fecha límite más cercana
@@ -424,10 +440,11 @@ export default function CalendarView({ tasks, onTaskClick, onDayClick, onSchedul
           onSave={saveEvent} onClose={() => setEventModal(null)} />
       )}
       {eventDetail && (
-        <EventDetail item={eventDetail} onClose={() => setEventDetail(null)} onDelete={deleteEvent}
+        <EventDetail item={eventDetail} onClose={() => setEventDetail(null)} onDelete={deleteEvent} onColorChange={changeEventColor}
           onEdit={item => {
             setEventDetail(null);
-            setEventModal({ item, initial: { title: item.event.summary, description: item.event.description, location: item.event.location, start: item.start, end: item.end } });
+            const ev = events.find(e => e.id === item.event.id) || item.event; // incluye un color recién cambiado
+            setEventModal({ item, initial: { title: ev.summary, description: ev.description, location: ev.location, colorId: ev.colorId || null, start: item.start, end: item.end } });
           }} />
       )}
       {connectPrompt && (
@@ -467,16 +484,16 @@ export default function CalendarView({ tasks, onTaskClick, onDayClick, onSchedul
 
       {/* Leyenda */}
       <div style={{ display: 'flex', gap: 14, marginTop: 12, flexWrap: 'wrap', fontSize: '11px', color: C.muted }}>
-        {Object.values(CATEGORY_CONFIG).map(cfg => (
-          <span key={cfg.label} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-            <span style={{ width: 10, height: 10, borderRadius: 2, background: cfg.bg, borderLeft: '3px solid ' + cfg.color }} />{cfg.label}
+        {Object.entries(CATEGORY_CONFIG).map(([key, cfg]) => (
+          <span key={key} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+            <span style={{ width: 12, height: 12, borderRadius: 3, background: categoryColor(key), borderLeft: '3px solid ' + shade(categoryColor(key), -0.35) }} />{cfg.label}
           </span>
         ))}
         <span style={{ display: 'flex', alignItems: 'center', gap: 5, color: C.danger }}>⚑ Fecha límite vencida</span>
         <span style={{ display: 'flex', alignItems: 'center', gap: 5, opacity: 0.5, textDecoration: 'line-through' }}>Completada</span>
         {googleConnected && (
           <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-            <span style={{ width: 10, height: 10, borderRadius: 2, background: '#F1F5F9', border: '1px dashed ' + C.mutedLt }} />Google Calendar
+            <span style={{ width: 12, height: 12, borderRadius: 3, background: palette.calendarColor }} />Google Calendar
           </span>
         )}
       </div>

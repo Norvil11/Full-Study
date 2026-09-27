@@ -2,12 +2,17 @@ import React, { useState } from 'react';
 import { X, Clock, MapPin, Repeat, ExternalLink, Edit2, Trash2, Loader2 } from 'lucide-react';
 import { C } from '../../lib/shared';
 import { fmtRange, fmtDateShort, addDays } from '../../lib/dates';
+import { colorHex, usePalette } from '../../lib/colors';
+import ColorPicker from '../ColorPicker';
 
 // Detalle de un evento de Google. Los recurrentes solo se abren en Google Calendar.
-export default function EventDetail({ item, onEdit, onDelete, onClose }) {
+export default function EventDetail({ item, onEdit, onDelete, onColorChange, onClose }) {
   const [confirming, setConfirming] = useState(false);
   const [deleting, setDeleting]     = useState(false);
   const [error, setError]           = useState('');
+  const [colorId, setColorId]       = useState(item.event.colorId || null);
+  const [colorError, setColorError] = useState('');
+  const { calendarColor } = usePalette();
   const ev = item.event;
   const editable = item.editable;                      // propio, no recurrente, con hora y de un solo día
   const canDelete = item.own && !item.recurring;
@@ -15,6 +20,19 @@ export default function EventDetail({ item, onEdit, onDelete, onClose }) {
   const when = item.allDay
     ? 'Todo el día · ' + fmtDateShort(item.start) + (item.end - item.start > 86400000 ? ' – ' + fmtDateShort(addDays(item.end, -1)) : '')
     : fmtRange(item.start, item.end);
+
+  // Se guarda al hacer clic (el bloque cambia al instante; si Google lo rechaza se revierte)
+  const handleColor = async (id) => {
+    const previous = colorId;
+    setColorId(id); setColorError('');
+    try { await onColorChange(item, id); }
+    catch (err) {
+      setColorId(previous);
+      setColorError(err.isAuthError
+        ? 'La sesión de Google expiró. Reconecta Google Calendar para cambiar el color.'
+        : 'Google no permitió cambiar el color de este evento' + (err.message ? ' (' + err.message + ')' : '') + '. Puedes cambiarlo desde Google Calendar.');
+    }
+  };
 
   const handleDelete = async () => {
     setDeleting(true); setError('');
@@ -29,7 +47,7 @@ export default function EventDetail({ item, onEdit, onDelete, onClose }) {
       <div onClick={e => e.stopPropagation()}
         style={{ background: C.surface, borderRadius: '18px', width: '100%', maxWidth: 400, border: '1.5px solid ' + C.border, boxShadow: '0 24px 64px rgba(27,58,107,0.22)', padding: 20, animation: 'slideDown 0.15s ease-out' }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
-          <div style={{ width: 12, height: 12, borderRadius: 3, background: '#F1F5F9', border: '1.5px dashed ' + C.mutedLt, marginTop: 5, flexShrink: 0 }} />
+          <div style={{ width: 14, height: 14, borderRadius: 4, background: colorHex(colorId) || calendarColor, marginTop: 5, flexShrink: 0 }} />
           <h3 style={{ margin: 0, flex: 1, fontSize: '17px', fontWeight: '800', color: C.navy, lineHeight: 1.3, wordBreak: 'break-word' }}>{item.title}</h3>
           <button onClick={onClose} style={{ background: C.bg, border: 'none', borderRadius: '8px', padding: 6, cursor: 'pointer', color: C.muted, display: 'flex' }}><X size={15} /></button>
         </div>
@@ -47,8 +65,23 @@ export default function EventDetail({ item, onEdit, onDelete, onClose }) {
               {ev.description.replace(/<[^>]+>/g, '')}
             </div>
           )}
-          {item.recurring && <div style={{ fontSize: '11px', color: C.muted }}>Los eventos recurrentes se editan desde Google Calendar.</div>}
+          {item.recurring && <div style={{ fontSize: '11px', color: C.muted }}>El horario y los datos de un evento recurrente se editan desde Google Calendar.</div>}
           {!item.own && !item.recurring && <div style={{ fontSize: '11px', color: C.muted }}>Eres invitado: solo el organizador puede cambiar este evento.</div>}
+        </div>
+
+        <div style={{ margin: '0 0 16px 22px' }}>
+          <div style={{ fontSize: '10px', fontWeight: '700', color: C.mutedLt, letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 6 }}>Color</div>
+          <ColorPicker value={colorId} onChange={handleColor} defaultLabel="Predeterminado" defaultColor={calendarColor} size={20} />
+          {colorError && (
+            <div style={{ marginTop: 8, padding: '8px 10px', background: C.warnLt, borderRadius: '8px', color: '#92400E', fontSize: '12px', fontWeight: '600', lineHeight: 1.4 }}>
+              {colorError}
+              {ev.htmlLink && (
+                <a href={ev.htmlLink} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginLeft: 6, color: C.blue, fontWeight: '700' }}>
+                  <ExternalLink size={11} /> Abrir en Google Calendar
+                </a>
+              )}
+            </div>
+          )}
         </div>
 
         {error && <div style={{ padding: '8px 12px', marginBottom: 12, background: C.dangerLt, borderRadius: '8px', color: C.danger, fontSize: '12px', fontWeight: '600' }}>{error}</div>}

@@ -1,16 +1,19 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { CheckCircle2, Flag, Repeat } from 'lucide-react';
 import { C } from '../../lib/shared';
 import {
   WEEKDAYS_SHORT, MINUTES_PER_DAY, dayKey, sameDay, startOfDay, addDays, minutesOfDay, fmtTime,
 } from '../../lib/dates';
 import { scheduleLimit } from '../../lib/schedule';
+import { textOn, shade } from '../../lib/colors';
 import ItemChip from './ItemChip';
 
 export const HOUR_PX = 48;                 // alto de una hora
 export const PX_PER_MIN = HOUR_PX / 60;    // 15 min = 12 px
 const GUTTER = 56;                         // columna de horas
 const INITIAL_HOUR = 7;
+const MIN_VISUAL_MIN = 30;                 // altura mínima visual de un bloque (30 min)
+const LINE_PX = 14;
 
 // Recorta un item al día y devuelve minutos [s, e) dentro de ese día
 function clipToDay(item, day) {
@@ -18,7 +21,7 @@ function clipToDay(item, day) {
   if (item.end <= d0 || item.start >= d1) return null;
   const s = item.start <= d0 ? 0 : minutesOfDay(item.start);
   const e = item.end >= d1 ? MINUTES_PER_DAY : minutesOfDay(item.end);
-  return { s, e: Math.max(e, s + 15) };
+  return { s, e: Math.max(e, s + MIN_VISUAL_MIN), dur: Math.round((item.end - item.start) / 60000) };
 }
 
 // Eventos superpuestos lado a lado (como Google Calendar)
@@ -41,40 +44,67 @@ function layoutColumn(entries) {
 
 const hatch = (rgba) => `repeating-linear-gradient(45deg, ${rgba} 0 6px, transparent 6px 12px)`;
 
+
+// Bloque relleno como en Google Calendar. El texto se acomoda según la altura.
 function Block({ entry, drag, onItemPointerDown, onItemClick }) {
-  const { item, s, e, col, cols } = entry;
-  const height = Math.max((e - s) * PX_PER_MIN, 18);
+  const [hover, setHover] = useState(false);
+  const { item, s, e, col, cols, dur } = entry;
+  const height = (e - s) * PX_PER_MIN - 2;                 // 2 px de separación vertical
   const isDragged = drag?.item?.key === item.key;
   const isTask = item.kind === 'task';
-  const short = height < 36;
+  const bg = hover && !drag ? shade(item.bg, -0.08) : item.bg;
+  const fg = textOn(item.bg);
+  const range = fmtTime(item.start) + ' – ' + fmtTime(item.end);
+  const location = item.location || '';
+
+  // < 45 min: una línea "Título, 14:00". ≥ 45 min: título (hasta 2 líneas), rango y ubicación si caben.
+  const compact = dur < 45;
+  const lines = Math.floor((height - 6) / LINE_PX);
+  const titleLines = !compact && (lines >= 4 || (!location && lines >= 3)) ? 2 : 1;
+  const showLocation = !compact && location && lines >= titleLines + 2;
+
   const handleDown = (ev, mode) => {
     ev.stopPropagation();
     if (ev.button !== 0) return;
     if (item.draggable) onItemPointerDown(ev, item, mode);
   };
+  const ellipsis = { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' };
+
   return (
     <div onPointerDown={ev => handleDown(ev, 'move')}
       onClick={ev => { ev.stopPropagation(); if (!item.draggable) onItemClick(item); }}
-      title={item.title + ' · ' + fmtTime(item.start) + ' – ' + fmtTime(item.end) + (item.recurring ? ' · Evento recurrente' : '')}
+      onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
+      title={[item.title, range, location, item.recurring ? 'Evento recurrente' : '', item.completed ? 'Completada' : ''].filter(Boolean).join('\n')}
       style={{
-        position: 'absolute', top: s * PX_PER_MIN + 1, height: height - 2,
-        left: `calc(${(col / cols) * 100}% + 2px)`, width: `calc(${100 / cols}% - 4px)`,
-        borderRadius: '6px', padding: short ? '1px 6px' : '4px 6px', overflow: 'hidden', boxSizing: 'border-box',
-        fontSize: '11px', lineHeight: 1.3, cursor: item.draggable ? 'grab' : 'pointer', touchAction: 'none',
+        position: 'absolute', top: s * PX_PER_MIN + 1, height,
+        left: `calc(${(col / cols) * 100}% + 1px)`, width: `calc(${100 / cols}% - 3px)`,
+        borderRadius: '5px', padding: compact ? '0 6px' : '3px 6px', overflow: 'hidden', boxSizing: 'border-box',
+        background: bg, color: fg, fontSize: '11px', lineHeight: LINE_PX + 'px',
+        borderLeft: isTask ? '4px solid ' + shade(item.bg, -0.35) : 'none',
+        boxShadow: hover && !drag ? '0 3px 8px rgba(15,32,64,0.28)' : 'none',
+        cursor: item.draggable ? 'grab' : 'pointer', touchAction: 'none', userSelect: 'none',
         opacity: isDragged ? 0.35 : item.completed ? 0.5 : 1,
         textDecoration: item.completed ? 'line-through' : 'none',
-        zIndex: 2, userSelect: 'none',
-        ...(isTask
-          ? { background: item.bg, color: C.navy, borderLeft: '5px solid ' + item.color, boxShadow: '0 1px 2px rgba(15,32,64,0.10)' }
-          : { background: '#F1F5F9', color: C.muted, border: '1px dashed ' + C.mutedLt }),
+        zIndex: hover ? 3 : 2, transition: 'background 0.12s, box-shadow 0.12s',
+        display: 'flex', flexDirection: 'column', justifyContent: compact ? 'center' : 'flex-start',
       }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontWeight: '700', whiteSpace: short ? 'nowrap' : 'normal', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-        {isTask && <CheckCircle2 size={11} color={item.color} style={{ flexShrink: 0 }} />}
-        {item.recurring && <Repeat size={10} style={{ flexShrink: 0 }} />}
-        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.title}</span>
-        {short && <span style={{ fontWeight: '500', marginLeft: 4, flexShrink: 0 }}>{fmtTime(item.start)}</span>}
-      </div>
-      {!short && <div style={{ fontWeight: '500', opacity: 0.85 }}>{fmtTime(item.start)} – {fmtTime(item.end)}</div>}
+      {compact ? (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0 }}>
+          {isTask && <CheckCircle2 size={11} style={{ flexShrink: 0 }} />}
+          {item.recurring && <Repeat size={10} style={{ flexShrink: 0 }} />}
+          <span style={ellipsis}><b>{item.title}</b>, {fmtTime(item.start)}</span>
+        </div>
+      ) : (
+        <>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 4, minWidth: 0 }}>
+            {isTask && <CheckCircle2 size={11} style={{ flexShrink: 0, marginTop: 1.5 }} />}
+            {item.recurring && <Repeat size={10} style={{ flexShrink: 0, marginTop: 2 }} />}
+            <span style={{ fontWeight: '700', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: titleLines, WebkitBoxOrient: 'vertical', wordBreak: 'break-word' }}>{item.title}</span>
+          </div>
+          <div style={ellipsis}>{range}</div>
+          {showLocation && <div style={{ ...ellipsis, opacity: 0.9 }}>{location}</div>}
+        </>
+      )}
       {item.draggable && (
         <div onPointerDown={ev => handleDown(ev, 'resize')}
           style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 7, cursor: 'ns-resize' }} />
@@ -174,7 +204,7 @@ export default function TimeGrid({
                   ))}
                   {due && sameDay(due, day) && (
                     <div style={{ position: 'absolute', left: 0, right: 0, top: minutesOfDay(due) * PX_PER_MIN, borderTop: '2px solid ' + drag.color, pointerEvents: 'none', zIndex: 4 }}>
-                      <span style={{ position: 'absolute', left: 2, top: -18, display: 'flex', alignItems: 'center', gap: 3, fontSize: '10px', fontWeight: '800', color: '#fff', background: drag.color, padding: '1px 6px', borderRadius: '4px', whiteSpace: 'nowrap' }}>
+                      <span style={{ position: 'absolute', left: 2, top: -18, display: 'flex', alignItems: 'center', gap: 3, fontSize: '10px', fontWeight: '800', color: textOn(drag.color), background: drag.color, padding: '1px 6px', borderRadius: '4px', whiteSpace: 'nowrap' }}>
                         <Flag size={9} /> Vence {fmtTime(due)}
                       </span>
                     </div>
@@ -186,11 +216,10 @@ export default function TimeGrid({
 
                   {preview && (
                     <div style={{
-                      position: 'absolute', left: 2, right: 2, top: preview.s * PX_PER_MIN + 1, height: Math.max((preview.e - preview.s) * PX_PER_MIN - 2, 14),
-                      borderRadius: '6px', padding: '3px 6px', fontSize: '11px', fontWeight: '700', zIndex: 5, pointerEvents: 'none', boxSizing: 'border-box',
-                      background: drag.invalid ? 'rgba(254,226,226,0.9)' : drag.color ? drag.bg : 'rgba(29,78,216,0.18)',
-                      border: '2px solid ' + (drag.invalid ? C.danger : drag.color || C.blue),
-                      color: drag.invalid ? C.danger : C.navy, boxShadow: '0 4px 12px rgba(15,32,64,0.18)',
+                      position: 'absolute', left: 1, right: 3, top: preview.s * PX_PER_MIN + 1, height: (preview.e - preview.s) * PX_PER_MIN - 2,
+                      borderRadius: '5px', padding: '3px 6px', fontSize: '11px', lineHeight: '14px', fontWeight: '700', zIndex: 5, pointerEvents: 'none', boxSizing: 'border-box', overflow: 'hidden',
+                      background: drag.invalid ? C.danger : drag.color, color: textOn(drag.invalid ? C.danger : drag.color),
+                      boxShadow: '0 6px 16px rgba(15,32,64,0.30)', opacity: 0.92,
                     }}>
                       {drag.title || 'Nuevo evento'}
                       <div style={{ fontWeight: '500' }}>{fmtTime(drag.preview.start)} – {fmtTime(drag.preview.end)}</div>

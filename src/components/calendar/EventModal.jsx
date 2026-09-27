@@ -3,6 +3,8 @@ import { X, Loader2, Save, MapPin } from 'lucide-react';
 import { C } from '../../lib/shared';
 import { fmtTime, toDateInput, fromDateAndTime, addMinutes, sameDay } from '../../lib/dates';
 import DateTime15Picker, { TimeSelect15 } from '../DateTime15Picker';
+import ColorPicker from '../ColorPicker';
+import { usePalette } from '../../lib/colors';
 
 const lbl = { display: 'block', fontSize: '11px', fontWeight: '700', color: C.navy, marginBottom: 6, letterSpacing: '0.05em', textTransform: 'uppercase' };
 const inp = { width: '100%', height: '42px', padding: '0 12px', borderRadius: '10px', border: '1.5px solid ' + C.border, background: C.surface, color: C.text, fontSize: '14px', outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit' };
@@ -16,6 +18,8 @@ export default function EventModal({ initial, isEdit = false, onSave, onClose })
   const [title, setTitle]             = useState(initial.title || '');
   const [description, setDescription] = useState(initial.description || '');
   const [location, setLocation]       = useState(initial.location || '');
+  const [colorId, setColorId]         = useState(initial.colorId || null);
+  const { calendarColor } = usePalette();
   const [start, setStart]             = useState(initial.start);
   const [endStr, setEndStr]           = useState(endLabel(initial.start, initial.end));
   const [saving, setSaving]           = useState(false);
@@ -40,7 +44,7 @@ export default function EventModal({ initial, isEdit = false, onSave, onClose })
     if (end <= start) return setError('La hora de fin debe ser posterior a la de inicio.');
     setSaving(true); setError('');
     try {
-      await onSave({ title: title.trim(), description: description.trim(), location: location.trim(), start, end });
+      await onSave({ title: title.trim(), description: description.trim(), location: location.trim(), start, end, colorId });
       onClose();
     } catch (err) {
       setError(err.message || 'No se pudo guardar el evento.');
@@ -69,6 +73,10 @@ export default function EventModal({ initial, isEdit = false, onSave, onClose })
           <div>
             <label style={lbl}>Hora de fin</label>
             <TimeSelect15 value={endStr} onChange={setEndStr} after={startStr} includeMidnight style={{ height: 42, width: 120 }} />
+          </div>
+          <div>
+            <label style={lbl}>Color</label>
+            <ColorPicker value={colorId} onChange={setColorId} defaultLabel="Predeterminado" defaultColor={calendarColor} size={20} />
           </div>
           <div>
             <label style={lbl}><MapPin size={10} style={{ verticalAlign: '-1px' }} /> Ubicación <span style={{ textTransform: 'none', fontWeight: '400', color: C.muted, letterSpacing: 0 }}>(opcional)</span></label>

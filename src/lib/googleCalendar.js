@@ -2,11 +2,14 @@
 // Google Identity Services (token client OAuth 2.0) + Google Calendar API v3.
 // El access token vive solo en memoria y sessionStorage; nunca se envía a Supabase.
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { setGoogleColors, resetGoogleColors, taskColorIdForGoogle } from './colors';
 
 const CLIENT_ID   = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
-const SCOPE       = 'https://www.googleapis.com/auth/calendar.events';
+// calendar.events: leer/crear/editar eventos. calendarlist.readonly: leer el color del calendario principal.
+const SCOPE       = 'https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.calendarlist.readonly';
 const GIS_SRC     = 'https://accounts.google.com/gsi/client';
-const API_BASE    = 'https://www.googleapis.com/calendar/v3/calendars/primary/events';
+const API_ROOT    = 'https://www.googleapis.com/calendar/v3';
+const API_BASE    = API_ROOT + '/calendars/primary/events';
 const STORAGE_KEY = 'gcal_token';
 
 export class GoogleAuthError extends Error {
@@ -71,6 +74,7 @@ export function taskEventBody(task) {
     summary: '📌 ' + task.title,
     description: task.description || '',
     ...timedRange(new Date(task.scheduled_start), new Date(task.scheduled_end)),
+    colorId: taskColorIdForGoogle(task),
     extendedProperties: { private: { myworkspaceTaskId: task.id } },
   };
 }
@@ -128,7 +132,7 @@ export function useGoogleCalendar() {
 
   const disconnect = useCallback(() => {
     const t = token;
-    storeToken(null); setToken(null); setStatus('disconnected');
+    storeToken(null); setToken(null); setStatus('disconnected'); resetGoogleColors();
     if (t && window.google?.accounts?.oauth2) window.google.accounts.oauth2.revoke(t.access_token, () => {});
   }, [token]);
 
@@ -169,6 +173,21 @@ export function useGoogleCalendar() {
       throw err;
     }
   }), [call]);
+
+  // Paleta de eventos y color del calendario principal (una vez por conexión).
+  // Si alguna llamada falla se mantiene la paleta fija de colors.js.
+  useEffect(() => {
+    if (status !== 'connected' || !token) return;
+    let cancelled = false;
+    const get = (path) => apiFetch(token, API_ROOT + path).catch(err => {
+      console.warn('Google Calendar ' + path + ':', err.message);
+      return null;
+    });
+    Promise.all([get('/colors'), get('/users/me/calendarList/primary')]).then(([colors, primary]) => {
+      if (!cancelled) setGoogleColors({ eventColors: colors?.event, calendarColor: primary?.backgroundColor });
+    });
+    return () => { cancelled = true; };
+  }, [status, token]);
 
   return { configured, status, connect, disconnect, listEvents, insertEvent, patchEvent, deleteEvent };
 }

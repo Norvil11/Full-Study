@@ -1,41 +1,50 @@
 import React from 'react';
-import { CheckCircle2, Flag } from 'lucide-react';
+import { CheckCircle2, Flag, Repeat } from 'lucide-react';
 import { C } from '../../lib/shared';
 import { fmtTime } from '../../lib/dates';
+import { textOn, shade } from '../../lib/colors';
 
-// Chip compacto para la vista Mes y la fila "todo el día".
-// item.kind: 'task' (bloque programado) | 'due' (fecha límite) | 'google'
-export default function ItemChip({ item, onClick, showTime = true }) {
+// Item compacto para la vista Mes y la fila "todo el día", al estilo de Google Calendar:
+// - Evento de todo el día: barra rellena con su color.
+// - Evento con hora / bloque de tarea: punto (o check) de color + "14:00 Título".
+// - Fecha límite de una tarea: bandera de color + "18:00 Título".
+export default function ItemChip({ item, onClick }) {
+  const click = e => { e.stopPropagation(); onClick(item); };
+  const tooltip = [item.title, item.allDay ? 'Todo el día' : fmtTime(item.start) + (item.kind === 'due' ? ' (fecha límite)' : ' – ' + fmtTime(item.end)), item.location]
+    .filter(Boolean).join('\n');
   const base = {
-    display: 'flex', alignItems: 'center', gap: 4, width: '100%', padding: '2px 6px', borderRadius: '4px',
-    fontSize: '11px', fontFamily: 'inherit', cursor: 'pointer', textAlign: 'left',
-    overflow: 'hidden', whiteSpace: 'nowrap', minWidth: 0,
+    display: 'flex', alignItems: 'center', gap: 5, width: '100%', minWidth: 0, padding: '1px 6px', borderRadius: '4px',
+    border: 'none', fontSize: '11px', lineHeight: '16px', fontFamily: 'inherit', cursor: 'pointer', textAlign: 'left',
+    overflow: 'hidden', whiteSpace: 'nowrap',
     opacity: item.completed ? 0.5 : 1, textDecoration: item.completed ? 'line-through' : 'none',
   };
-  const time = showTime && !item.allDay ? <span style={{ fontWeight: '700', flexShrink: 0 }}>{fmtTime(item.start)}</span> : null;
   const label = <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.title}</span>;
-  const click = e => { e.stopPropagation(); onClick(item); };
 
-  if (item.kind === 'google') {
+  if (item.allDay) {
     return (
-      <button onClick={click} onPointerDown={e => e.stopPropagation()} title={item.title + ' · Google Calendar'}
-        style={{ ...base, fontWeight: '500', color: C.muted, background: '#F1F5F9', border: '1px dashed ' + C.mutedLt }}>
-        {time}{label}
+      <button onClick={click} onPointerDown={e => e.stopPropagation()} title={tooltip}
+        style={{ ...base, fontWeight: '600', background: item.bg, color: textOn(item.bg) }}
+        onMouseEnter={e => { e.currentTarget.style.background = shade(item.bg, -0.08); }}
+        onMouseLeave={e => { e.currentTarget.style.background = item.bg; }}>
+        {item.recurring && <Repeat size={10} style={{ flexShrink: 0 }} />}{label}
       </button>
     );
   }
-  if (item.kind === 'due') {
-    return (
-      <button onClick={click} onPointerDown={e => e.stopPropagation()} title={'Fecha límite: ' + item.title}
-        style={{ ...base, fontWeight: '600', color: item.color, background: 'transparent', border: 'none', padding: '1px 4px' }}>
-        <Flag size={10} style={{ flexShrink: 0 }} />{time}{label}
-      </button>
-    );
-  }
+
+  const marker = item.kind === 'due'
+    ? <Flag size={10} color={item.bg} fill={item.bg} style={{ flexShrink: 0 }} />
+    : item.kind === 'task'
+      ? <CheckCircle2 size={11} color={item.bg} strokeWidth={2.5} style={{ flexShrink: 0 }} />
+      : <span style={{ width: 8, height: 8, borderRadius: '50%', background: item.bg, flexShrink: 0 }} />;
+
   return (
-    <button onClick={click} onPointerDown={e => e.stopPropagation()} title={item.title}
-      style={{ ...base, fontWeight: '600', color: C.navy, background: item.bg, border: 'none', borderLeft: '3px solid ' + item.color }}>
-      <CheckCircle2 size={10} color={item.color} style={{ flexShrink: 0 }} />{time}{label}
+    <button onClick={click} onPointerDown={e => e.stopPropagation()} title={tooltip}
+      style={{ ...base, background: 'transparent', color: item.overdue ? C.danger : C.text, fontWeight: item.kind === 'due' ? '600' : '500' }}
+      onMouseEnter={e => { e.currentTarget.style.background = C.bg; }}
+      onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}>
+      {marker}
+      <span style={{ fontWeight: '700', flexShrink: 0 }}>{fmtTime(item.start)}</span>
+      {label}
     </button>
   );
 }
